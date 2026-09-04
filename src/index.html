@@ -132,16 +132,26 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
 .prose a { color: var(--series-1); }
 .prose code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.88em; background: var(--plane); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
 
+/* Hub footer — same structure as ping/harborline (logo inside the link),
+   ported to this page's palette rather than loading shared-footer/footer.css,
+   which expects Bootstrap. */
 footer.chrislawrence-footer {
-  margin-top: 40px; padding: 28px 20px 34px; text-align: center;
+  display: flex; align-items: center; justify-content: center;
+  margin-top: 40px; padding: 2rem 1rem;
   border-top: 1px solid var(--border); background: var(--surface-1);
 }
-footer .footer-logo { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; margin-bottom: 12px; }
-footer .footer-home-link {
-  display: inline-block; text-decoration: none; font-size: 0.95rem; font-weight: 600;
-  color: var(--series-1); border: 1px solid var(--series-1); border-radius: 999px; padding: 8px 20px;
+.footer-home-link {
+  display: inline-flex; align-items: center; gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--plane); color: var(--text-secondary);
+  font-size: 0.95rem; text-decoration: none;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
-footer .footer-home-link:hover { background: var(--series-1); color: var(--surface-1); }
+.footer-home-link:hover {
+  background: var(--grid); border-color: var(--axis); transform: translateY(-2px);
+}
+.footer-logo { height: 40px; width: auto; border-radius: 8px; display: block; }
 </style>
 </head>
 <body>
@@ -271,8 +281,10 @@ footer .footer-home-link:hover { background: var(--series-1); color: var(--surfa
 </div>
 
 <footer class="chrislawrence-footer">
-  <img class="footer-logo" src="/shared-footer/logo-portrait.png" alt="Chris Lawrence">
-  <div><a class="footer-home-link" href="https://chrislawrence.ca">Visit main site: chrislawrence.ca</a></div>
+  <a href="https://chrislawrence.ca" class="footer-home-link" aria-label="Back to chrislawrence.ca">
+    <img src="/shared-footer/logo-portrait.png" alt="Chris Lawrence" class="footer-logo" width="40" height="40" loading="lazy">
+    <span class="footer-home-link-text">Back to chrislawrence.ca</span>
+  </a>
 </footer>
 
 <script>

@@ -217,6 +217,16 @@ footer .footer-home-link:hover { background: var(--series-1); color: var(--surfa
   </section>
 
   <section class="card">
+    <h2>Revisions to published history</h2>
+    <p class="cap" id="rev-cap">Checking…</p>
+    <div class="tablewrap" id="rev-wrap" style="display:none"><table id="rev-tbl">
+      <thead><tr><th>Observed</th><th>Series</th><th>Period</th><th>Was</th><th>Now</th><th>Change</th><th>Kind</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <p class="prose" style="margin:10px 0 0">Every refresh is compared against the previous one, and any change to an already-published value is logged. Spot prices are rarely restated; the monthly refiner series are revised routinely as survey responses come in, so that is where most entries come from. New observations appearing for the first time are not revisions and are not listed. Comparison is skipped when the upstream source changes, since EIA and the FRED fallback carry slightly different observation counts.</p>
+  </section>
+
+  <section class="card">
     <h2>The formula</h2>
     <p class="prose" style="margin-top:0">Diesel crack is ULSD minus crude, per barrel. ULSD quotes in $/gal, so multiply by 42:</p>
     <div class="formula">crack ($/bbl) = ULSD ($/gal) × 42 − WTI ($/bbl)</div>
@@ -543,6 +553,30 @@ footer .footer-home-link:hover { background: var(--series-1); color: var(--surfa
     }).join("");
   }
 
+  function buildRevisions(rev) {
+    var cap = document.getElementById("rev-cap");
+    var wrap = document.getElementById("rev-wrap");
+    if (!rev) { cap.textContent = "Revision tracking is not available from the current data source."; return; }
+    var since = (rev.since || "").slice(0, 10);
+    if (!rev.total) {
+      cap.textContent = "No restatements observed since tracking began on " + since +
+        ". Each refresh is diffed against the one before it; this stays empty until an already-published value changes.";
+      return;
+    }
+    cap.textContent = rev.total.toLocaleString() + " restatement" + (rev.total === 1 ? "" : "s") +
+      " observed since " + since + (rev.recent.length < rev.total ? " · showing the " + rev.recent.length + " most recent" : "") + ".";
+    wrap.style.display = "";
+    document.querySelector("#rev-tbl tbody").innerHTML = rev.recent.map(function (r) {
+      var delta = (r.before !== null && r.after !== null)
+        ? (r.after - r.before >= 0 ? "+" : "−") + "$" + Math.abs(r.after - r.before).toFixed(4)
+        : "—";
+      return "<tr><td>" + (r.observed_at || "").slice(0, 10) + "</td><td>" + r.label +
+             "</td><td>" + r.period + "</td><td>" + (r.before === null ? "—" : r.before) +
+             "</td><td>" + (r.after === null ? "—" : r.after) + "</td><td>" + delta +
+             "</td><td>" + r.kind + "</td></tr>";
+    }).join("");
+  }
+
   function buildTable(d) {
     var years = {}, i;
     for (i = 0; i < d.dates.length; i++) {
@@ -629,6 +663,7 @@ footer .footer-home-link:hover { background: var(--series-1); color: var(--surfa
         " · refreshed " + p.updated.replace("T", " ").replace("+00:00", " UTC");
       buildTiles(d);
       buildTable(d);
+      buildRevisions(p.revisions);
       render();
 
       if (p.monthly && p.monthly.periods && p.monthly.periods.length) {

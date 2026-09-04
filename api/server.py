@@ -59,6 +59,25 @@ GAL_PER_BBL = 42
 EIA_PAGE = 5000  # the API's hard JSON row cap
 DATA_DIR = os.environ.get("DATA_DIR", "/app/data")
 CACHE = os.path.join(DATA_DIR, "crack.json")
+REVISIONS = os.path.join(DATA_DIR, "revisions.jsonl")
+REVISIONS_META = os.path.join(DATA_DIR, "revisions-meta.json")
+
+# Raw published legs worth watching for restatement. Derived values (the
+# cracks) are not tracked: they move only because a leg moved, so tracking
+# them would report the same restatement several times over.
+DAILY_TRACKED = [
+    ("distillate", "NY Harbor distillate ($/gal)"),
+    ("gulf_distillate", "Gulf Coast ULSD ($/gal)"),
+    ("gasoline", "NY Harbor gasoline ($/gal)"),
+    ("wti", "WTI ($/bbl)"),
+    ("brent", "Brent ($/bbl)"),
+]
+MONTHLY_TRACKED = [
+    ("distillate", "Refiner distillate wholesale ×42 ($/bbl)"),
+    ("rac", "Refiner crude acquisition cost ($/bbl)"),
+]
+EPSILON = 1e-9          # float-parse noise, not a real restatement
+REVISIONS_IN_PAYLOAD = 60  # most recent records embedded for the page
 REFRESH_SECONDS = 12 * 3600
 RETRY_BASE_SECONDS = 60      # first retry after a failure
 RETRY_MAX_SECONDS = 1800     # ceiling, so a long outage settles at 30 min
@@ -216,6 +235,117 @@ def build_payload():
     return payload
 
 
+def _compare(records, kind_prefix, periods_old, arr_old, periods_new, arr_new, key, label):
+    """Append one series' restatements to `records`.
+
+    Only periods present in BOTH snapshots can be restated. A period that is
+    new to this snapshot is a fresh publication, not a revision.
+    """
+    if not arr_old or not arr_new:
+        return
+    old_at = {p: i for i, p in enumerate(periods_old)}
+    for i, period in enumerate(periods_new):
+        j = old_at.get(period)
+        if j is None or j >= len(arr_old) or i >= len(arr_new):
+            continue
+        before, after = arr_old[j], arr_new[i]
+        if before is None and after is None:
+            continue
+        if before is None:
+            kind = "filled"       # published late
+        elif after is None:
+            kind = "withdrawn"    # pulled back
+        elif abs(before - after) <= EPSILON:
+            continue
+        else:
+            kind = "revised"
+        records.append({
+            "frequency": kind_prefix,
+            "series": key,
+            "label": label,
+            "period": period,
+            "before": before,
+            "after": after,
+            "kind": kind,
+        })
+
+
+def diff_payloads(old, new):
+    """Restatements between two snapshots, newest-period first.
+
+    Returns nothing when the snapshots come from different upstreams: EIA and
+    the FRED fallback carry slightly different observation counts, so diffing
+    across a source switch would report hundreds of phantom revisions.
+    """
+    if not old or not new:
+        return []
+    if old.get("source") != new.get("source"):
+        print("skipping revision diff: source changed %s -> %s" % (old.get("source"), new.get("source")), flush=True)
+        return []
+
+    records = []
+    for key, label in DAILY_TRACKED:
+        _compare(records, "daily", old.get("dates", []), old.get(key),
+                 new.get("dates", []), new.get(key), key, label)
+
+    om, nm = old.get("monthly"), new.get("monthly")
+    if om and nm:
+        for key, label in MONTHLY_TRACKED:
+            _compare(records, "monthly", om.get("periods", []), om.get(key),
+                     nm.get("periods", []), nm.get(key), key, label)
+
+    records.sort(key=lambda r: (r["period"], r["series"]), reverse=True)
+    return records
+
+
+def record_revisions(records, observed_at):
+    """Append to the log and return (recent_records, total_count)."""
+    if records:
+        with open(REVISIONS, "a") as fh:
+            for rec in records:
+                rec = dict(rec, observed_at=observed_at)
+                fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
+        try:
+            os.chmod(REVISIONS, 0o644)
+        except OSError:
+            pass
+    return read_revisions(REVISIONS_IN_PAYLOAD)
+
+
+def read_revisions(limit):
+    """Return (most recent `limit` records, total). Newest first."""
+    if not os.path.exists(REVISIONS):
+        return [], 0
+    out = []
+    with open(REVISIONS) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                continue
+    return list(reversed(out[-limit:])), len(out)
+
+
+def tracking_since(default_iso):
+    """First moment two snapshots could be compared. Written once, then read."""
+    if os.path.exists(REVISIONS_META):
+        try:
+            with open(REVISIONS_META) as fh:
+                return json.load(fh).get("since", default_iso)
+        except (ValueError, OSError):
+            pass
+    try:
+        with open(REVISIONS_META, "w") as fh:
+            json.dump({"since": default_iso}, fh)
+        os.chmod(REVISIONS_META, 0o644)
+    except OSError:
+        pass
+    return default_iso
+
+
 def refresh():
     try:
         payload = build_payload()
@@ -224,6 +354,24 @@ def refresh():
             _state["last_error"] = "%s: %s" % (type(exc).__name__, exc)
         print("refresh failed: %s" % _state["last_error"], flush=True)
         return False
+
+    # Diff against the snapshot this one replaces, before it is replaced.
+    with _lock:
+        previous = _state["payload"]
+    revisions = diff_payloads(previous, payload)
+    if revisions:
+        kinds = {}
+        for r in revisions:
+            kinds[r["kind"]] = kinds.get(r["kind"], 0) + 1
+        print("restatements detected: %d (%s)" % (len(revisions), kinds), flush=True)
+    recent, total = record_revisions(revisions, payload["updated"])
+    payload["revisions"] = {
+        "since": tracking_since(payload["updated"]),
+        "total": total,
+        "last_run": len(revisions),
+        "recent": recent,
+    }
+
     with _lock:
         _state["payload"] = payload
         _state["fetched_at"] = time.time()
@@ -312,10 +460,27 @@ class Handler(BaseHTTPRequestHandler):
                     "latest": payload["dates"][-1],
                     "monthly_points": len(payload["monthly"]["periods"]) if payload.get("monthly") else 0,
                     "fetched_at": fetched_at,
+                    "revisions_total": payload.get("revisions", {}).get("total", 0),
+                    "revisions_last_run": payload.get("revisions", {}).get("last_run", 0),
                     "consecutive_failures": failures,
                     "next_attempt_in": round(next_attempt - time.time()) if next_attempt else None,
                     "last_error": last_error,
                 })
+            return
+
+        if path == "/api/revisions":
+            qs = urllib.parse.parse_qs(self.path.partition("?")[2])
+            try:
+                limit = max(1, min(5000, int(qs.get("limit", ["500"])[0])))
+            except ValueError:
+                limit = 500
+            recent, total = read_revisions(limit)
+            self._send(200, {
+                "since": payload["revisions"]["since"] if payload and payload.get("revisions") else None,
+                "total": total,
+                "returned": len(recent),
+                "revisions": recent,
+            })
             return
 
         if path == "/api/data":

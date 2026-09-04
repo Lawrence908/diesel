@@ -326,11 +326,22 @@ footer.chrislawrence-footer {
     this.tip = document.getElementById(tooltipId);
     this.opts = opts;
     this.hover = null;
+    // Captured once. canvas.height is a reflected IDL attribute, so assigning
+    // cv.height below rewrites the attribute a later draw would read back as
+    // its logical height: at devicePixelRatio 3 that compounded 380 -> 1140 ->
+    // 3420 on successive draws. At dpr 1 it is a no-op, which is why this only
+    // ever showed on phones, where touchmove and touchend both redraw and the
+    // chart grew out of the viewport the moment a finger touched it.
+    this.h = parseInt(this.canvas.getAttribute("height"), 10) || 300;
     var self = this;
     this.canvas.addEventListener("mousemove", function (e) { self.onMove(e.clientX); });
     this.canvas.addEventListener("mouseleave", function () { self.hover = null; self.tip.style.opacity = 0; self.draw(); });
     this.canvas.addEventListener("touchmove", function (e) { if (e.touches[0]) self.onMove(e.touches[0].clientX); }, { passive: true });
     this.canvas.addEventListener("touchend", function () { self.hover = null; self.tip.style.opacity = 0; self.draw(); });
+    // touchcancel fires when the browser takes the gesture over for scrolling.
+    // Without it the crosshair and tooltip stay stuck on whatever was last
+    // under the finger, because touchend never arrives.
+    this.canvas.addEventListener("touchcancel", function () { self.hover = null; self.tip.style.opacity = 0; self.draw(); });
   }
 
   Chart.prototype.setData = function (xs, series) { this.xs = xs; this.series = series; this.hover = null; this.draw(); };
@@ -372,7 +383,7 @@ footer.chrislawrence-footer {
   Chart.prototype.draw = function () {
     var cv = this.canvas, ctx = cv.getContext("2d");
     var dpr = window.devicePixelRatio || 1;
-    var w = cv.clientWidth, h = parseInt(cv.getAttribute("height"), 10);
+    var w = cv.clientWidth, h = this.h;
     cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
     cv.style.height = h + "px";
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -499,6 +510,17 @@ footer.chrislawrence-footer {
   var crack = new Chart("c-crack", "t-crack", { includeZero: false });
   var legs = new Chart("c-legs", "t-legs", { includeZero: true });
   var deep = new Chart("c-deep", "t-deep", { includeZero: true, monthly: true });
+
+  // The monthly panel used to get setData exactly once, inside the fetch, so
+  // it was the only chart neither the resize handler nor the theme handler
+  // reached: stale geometry after a resize, and a stale series colour after a
+  // theme flip, because colours are resolved from CSS variables at setData
+  // time. Keeping its data here lets both handlers re-render it like the rest.
+  var deepData = null;
+  function renderDeep() {
+    if (!deepData) return;
+    deep.setData(deepData.xs, [{ name: "Refiner crack", color: css("--series-4"), values: deepData.values }]);
+  }
 
   // key -> label and color slot. Order is the fixed categorical order; a
   // series keeps its color no matter which others are switched on.
@@ -637,11 +659,12 @@ footer.chrislawrence-footer {
   var resizeTimer;
   window.addEventListener("resize", function () {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(function () { crack.draw(); legs.draw(); }, 120);
+    resizeTimer = setTimeout(function () { crack.draw(); legs.draw(); deep.draw(); }, 120);
   });
   if (window.matchMedia) {
     var mq = window.matchMedia("(prefers-color-scheme: dark)");
-    (mq.addEventListener ? mq.addEventListener.bind(mq, "change") : mq.addListener.bind(mq))(function () { render(); });
+    (mq.addEventListener ? mq.addEventListener.bind(mq, "change") : mq.addListener.bind(mq))(
+      function () { render(); renderDeep(); });
   }
 
   fetch("/api/data", { cache: "no-cache" })
@@ -686,7 +709,8 @@ footer.chrislawrence-footer {
         var lastCrack = m.periods[m.crack.length - 1 - m.crack.slice().reverse().findIndex(function (v) { return v !== null; })];
         document.getElementById("deep-end").textContent = lastCrack;
         document.getElementById("deep-start").textContent = m.periods[first];
-        deep.setData(xs, [{ name: "Refiner crack", color: css("--series-4"), values: m.crack.slice(first) }]);
+        deepData = { xs: xs, values: m.crack.slice(first) };
+        renderDeep();
       }
     })
     .catch(function (e) {

@@ -60,8 +60,11 @@ EIA_PAGE = 5000  # the API's hard JSON row cap
 DATA_DIR = os.environ.get("DATA_DIR", "/app/data")
 CACHE = os.path.join(DATA_DIR, "crack.json")
 REFRESH_SECONDS = 12 * 3600
+RETRY_BASE_SECONDS = 60      # first retry after a failure
+RETRY_MAX_SECONDS = 1800     # ceiling, so a long outage settles at 30 min
+RETRY_MAX_DOUBLINGS = 10     # keeps the shift bounded regardless of streak length
 
-_state = {"payload": None, "fetched_at": None, "last_error": None}
+_state = {"payload": None, "fetched_at": None, "last_error": None, "failures": 0, "next_attempt": None}
 _lock = threading.Lock()
 
 
@@ -247,10 +250,29 @@ def load_cache():
         _state["fetched_at"] = os.path.getmtime(CACHE)
 
 
-def refresher():
+def next_delay(failures):
+    """Seconds to wait before the next attempt.
+
+    A clean run waits the full interval. After a failure the wait starts at a
+    minute and doubles, capped at RETRY_MAX_SECONDS -- a transient EIA blip
+    costs a minute rather than the twelve hours a fixed interval would.
+    """
+    if failures <= 0:
+        return REFRESH_SECONDS
+    doublings = min(failures - 1, RETRY_MAX_DOUBLINGS)
+    return min(RETRY_BASE_SECONDS * (2 ** doublings), RETRY_MAX_SECONDS)
+
+
+def refresher(failures=0):
     while True:
-        time.sleep(REFRESH_SECONDS)
-        refresh()
+        delay = next_delay(failures)
+        with _lock:
+            _state["failures"] = failures
+            _state["next_attempt"] = time.time() + delay
+        if failures:
+            print("retry %d in %ss" % (failures, round(delay)), flush=True)
+        time.sleep(delay)
+        failures = 0 if refresh() else failures + 1
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -275,6 +297,8 @@ class Handler(BaseHTTPRequestHandler):
             payload = _state["payload"]
             fetched_at = _state["fetched_at"]
             last_error = _state["last_error"]
+            failures = _state["failures"]
+            next_attempt = _state["next_attempt"]
 
         if path == "/api/health":
             # Probe the dependency, not the process: no data means unhealthy.
@@ -288,6 +312,8 @@ class Handler(BaseHTTPRequestHandler):
                     "latest": payload["dates"][-1],
                     "monthly_points": len(payload["monthly"]["periods"]) if payload.get("monthly") else 0,
                     "fetched_at": fetched_at,
+                    "consecutive_failures": failures,
+                    "next_attempt_in": round(next_attempt - time.time()) if next_attempt else None,
                     "last_error": last_error,
                 })
             return
@@ -309,8 +335,10 @@ def main():
     os.makedirs(DATA_DIR, exist_ok=True)
     print("starting; EIA key %s" % ("present" if EIA_KEY else "ABSENT (FRED fallback only)"), flush=True)
     load_cache()
-    refresh()
-    threading.Thread(target=refresher, daemon=True).start()
+    ok = refresh()
+    # A failed first fetch enters the backoff schedule immediately rather than
+    # sleeping out the full interval before its first retry.
+    threading.Thread(target=refresher, kwargs={"failures": 0 if ok else 1}, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", 8000), Handler).serve_forever()
 
 

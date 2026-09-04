@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Diesel Crack Spread — 40 Years of History</title>
-<meta name="description" content="Historical diesel crack spread, US (WTI) and European/Atlantic-basin (Brent), computed daily from EIA spot prices via FRED.">
+<title>Diesel Crack Spread — Four Decades of History</title>
+<meta name="description" content="Historical diesel crack spread, US (WTI) and European/Atlantic-basin (Brent), computed daily from EIA spot prices.">
 <style>
 :root {
   color-scheme: light;
@@ -19,6 +19,7 @@
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
+  --series-4: #4a3aa7;
   --tooltip-bg: rgba(252,252,251,0.97);
 }
 @media (prefers-color-scheme: dark) {
@@ -35,6 +36,7 @@
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
+    --series-4: #9085e9;
     --tooltip-bg: rgba(26,26,25,0.97);
   }
 }
@@ -51,6 +53,7 @@
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
+  --series-4: #9085e9;
   --tooltip-bg: rgba(26,26,25,0.97);
 }
 
@@ -170,11 +173,15 @@ footer .footer-home-link:hover { background: var(--series-1); color: var(--surfa
         <button class="seg" data-smooth="60">12-week</button>
         <button class="seg" data-smooth="250">1-year</button>
       </div>
+      <div class="group" role="group" aria-label="Series">
+        <span class="glabel">Series</span>
+        <button class="seg" data-series="us" aria-pressed="true">US · WTI</button>
+        <button class="seg" data-series="eu" aria-pressed="true">Euro · Brent</button>
+        <button class="seg" data-series="gulf" aria-pressed="false">Gulf Coast</button>
+        <button class="seg" data-series="c321" aria-pressed="false">3-2-1</button>
+      </div>
     </div>
-    <div class="legend">
-      <span class="item"><span class="swatch" style="background:var(--series-1)"></span> US crack — ULSD × 42 − WTI</span>
-      <span class="item"><span class="swatch" style="background:var(--series-2)"></span> European crack — ULSD × 42 − Brent</span>
-    </div>
+    <div class="legend" id="legend-crack"></div>
     <div class="plot"><canvas id="c-crack" height="380"></canvas><div class="tooltip" id="t-crack"></div></div>
     <p class="status" id="status">Fetching 40 years of daily spot prices…</p>
   </section>
@@ -188,6 +195,16 @@ footer .footer-home-link:hover { background: var(--series-1); color: var(--surfa
       <span class="item"><span class="swatch" style="background:var(--series-2)"></span> Brent</span>
     </div>
     <div class="plot"><canvas id="c-legs" height="300"></canvas><div class="tooltip" id="t-legs"></div></div>
+  </section>
+
+  <section class="card" id="card-deep" style="display:none">
+    <h2>Deeper history, on a different price basis</h2>
+    <p class="cap">Monthly, dollars per barrel, from <span id="deep-start">1983-01</span>. This is <strong>not</strong> the spot crack above and is not spliced into it — it is the only honest way to see the pre-1986 and early-1980s picture, and it answers a slightly different question.</p>
+    <div class="legend">
+      <span class="item"><span class="swatch" style="background:var(--series-4)"></span> Refiner distillate wholesale × 42 − refiner crude acquisition cost</span>
+    </div>
+    <div class="plot"><canvas id="c-deep" height="280"></canvas><div class="tooltip" id="t-deep"></div></div>
+    <p class="prose" style="margin:10px 0 0">Both legs are refiner survey averages rather than spot markers: the product leg is the US average wholesale/resale price refiners charged for No. 2 distillate, and the crude leg is their composite acquisition cost, which lags the market and blends domestic with imported barrels. The level therefore sits above the spot crack and moves more slowly. EIA discontinued the refiner product series in <span id="deep-end">2022-03</span>; the crude series continues.</p>
   </section>
 
   <section class="card">
@@ -208,18 +225,25 @@ footer .footer-home-link:hover { background: var(--series-1); color: var(--surfa
       <p>Use Brent instead of WTI if you're looking at European / Atlantic-basin refining margins. There's no separate "diesel contract" — NY Harbor ULSD (NYMEX ticker <code>HO</code>) <em>is</em> the diesel benchmark; the name is a leftover from when it was heating oil.</p>
 
       <h3>Sources</h3>
+      <p>Live source for this page: <strong><span id="source-name">EIA API v2</span></strong>.</p>
       <ul>
-        <li><strong>FRED (Federal Reserve Bank of St. Louis)</strong> — every series on this page, pulled daily from the keyless CSV endpoint:
+        <li><strong>U.S. Energy Information Administration, API v2</strong> — the primary publisher, and the source of every number here. Daily spot legs come from <code>petroleum/pri/spt/data</code>:
           <ul>
-            <li><a href="https://fred.stlouisfed.org/series/DDFUELNYH">DDFUELNYH</a> — ULSD spot, NY Harbor, $/gal, daily from 2006-06-14</li>
-            <li><a href="https://fred.stlouisfed.org/series/DHOILNYH">DHOILNYH</a> — No. 2 heating oil spot, NY Harbor, $/gal, daily from 1986-06-02</li>
-            <li><a href="https://fred.stlouisfed.org/series/DCOILWTICO">DCOILWTICO</a> — WTI crude spot, Cushing OK, $/bbl, daily from 1986-01-02</li>
-            <li><a href="https://fred.stlouisfed.org/series/DCOILBRENTEU">DCOILBRENTEU</a> — Brent crude spot, Europe, $/bbl, daily from 1987-05-20</li>
+            <li><code>EER_EPD2DXL0_PF4_Y35NY_DPG</code> — NY Harbor ULSD spot, $/gal, daily from 2006-06-14</li>
+            <li><code>EER_EPD2F_PF4_Y35NY_DPG</code> — NY Harbor No. 2 heating oil spot FOB, $/gal, daily from 1986-06-02</li>
+            <li><code>EER_EPD2DXL0_PF4_RGC_DPG</code> — US Gulf Coast ULSD spot, $/gal, daily from 2006-06-14</li>
+            <li><code>EER_EPMRU_PF4_Y35NY_DPG</code> — NY Harbor conventional regular gasoline spot FOB, $/gal, daily from 1986-06-02 (the 3-2-1 leg)</li>
+            <li><code>RWTC</code> — Cushing, OK WTI spot FOB, $/bbl, daily from 1986-01-02</li>
+            <li><code>RBRTE</code> — Europe Brent spot FOB, $/bbl, daily from 1987-05-20</li>
           </ul>
+          The monthly panel uses <code>petroleum/pri/refoth/data</code> series <code>EMA_EPD2_PWG_NUS_DPG</code> (US No. 2 distillate wholesale/resale price by refiners, from 1983-01) against <code>petroleum/pri/rac2/data</code> series <code>R0000____3</code> (US crude oil composite acquisition cost by refiners, from 1974-01).
         </li>
-        <li><strong>U.S. Energy Information Administration</strong> — the original source FRED redistributes.
-          <a href="https://www.eia.gov/dnav/pet/hist/eer_epd2f_pf4_y35ny_dpgM.htm">No. 2 heating oil spot, NY Harbor</a>;
-          API v2 endpoint <code>petroleum/pri/spt/data</code> carries the same series, plus <code>RWTC</code> for WTI.</li>
+        <li><strong>FRED (Federal Reserve Bank of St. Louis)</strong> — automatic fallback if EIA is unreachable, via the keyless CSV endpoint. It redistributes the same EIA series, so the numbers are identical:
+          <a href="https://fred.stlouisfed.org/series/DDFUELNYH">DDFUELNYH</a>,
+          <a href="https://fred.stlouisfed.org/series/DHOILNYH">DHOILNYH</a>,
+          <a href="https://fred.stlouisfed.org/series/DCOILWTICO">DCOILWTICO</a>,
+          <a href="https://fred.stlouisfed.org/series/DCOILBRENTEU">DCOILBRENTEU</a>.
+          A fallback run loses the Gulf Coast leg, the 3-2-1 crack and the monthly panel; the header stamp says which source produced what you're looking at.</li>
         <li><strong>EIA Weekly Petroleum Status Report</strong>, <a href="https://www.eia.gov/petroleum/supply/weekly/pdf/table12.pdf">Table 12</a> — ULSD spot for NY Harbor, Gulf Coast and LA, if you just want a glance.</li>
         <li><strong>Front-month futures alternative</strong> — TradingView accepts the spread expression <code>HO1!*42-CL1!</code> directly. Barchart and Investing.com carry HO and CL history as CSV.</li>
       </ul>
@@ -229,7 +253,8 @@ footer .footer-home-link:hover { background: var(--series-1); color: var(--surfa
         <li><strong>Depth.</strong> The distillate leg is spliced: ULSD (<code>DDFUELNYH</code>) from <span id="splice">2006-06-14</span> onward, No.&nbsp;2 heating oil (<code>DHOILNYH</code>) before that. Same NY Harbor barge market, different sulfur spec — ULSD carries a small quality premium over high-sulfur heating oil, so pre-2006 levels are marginally understated. That splice is what buys the history: daily ULSD alone only reaches 2006. Forty years, not fifty — 1986-06-02 is where the daily spot record begins.</li>
         <li><strong>"European" crack.</strong> This is NY Harbor distillate against Brent — the Atlantic-basin margin as the formula defines it, not a Rotterdam gasoil quote. A true northwest-European crack would use ICE Low Sulphur Gasoil against Brent; that series isn't in a free keyless feed.</li>
         <li><strong>Spot, not futures.</strong> These are physical spot assessments, so the level differs slightly from the front-month <code>HO1!−CL1!</code> futures crack.</li>
-        <li><strong>Refinery economics.</strong> If you're modelling a whole refinery rather than the diesel leg, the 3-2-1 crack (3 crude, 2 gasoline, 1 distillate) is the standard proxy, and Gulf Coast ULSD (<code>DDFUELUSGULF</code>) is usually the better regional reference than NY Harbor.</li>
+        <li><strong>Refinery economics.</strong> If you're modelling a whole refinery rather than the diesel leg, switch on the <strong>3-2-1</strong> series — three barrels of crude in, two of gasoline and one of distillate out, computed as (2 × gasoline × 42 + distillate × 42 − 3 × WTI) ÷ 3 from NY Harbor legs. The <strong>Gulf Coast</strong> series is usually the better regional reference than NY Harbor for US refining margins; both are off by default.</li>
+        <li><strong>How far back diesel actually goes.</strong> Fifty years isn't reachable on the diesel leg from public data at any resolution. Daily spot begins 1986-06-02. The deepest published US distillate price of any kind is the refiner wholesale series at 1983-01 — that's the monthly panel, and it's a different price basis, so it's shown separately rather than pretending to extend the spot line. The crude side goes back to 1974 either way; diesel is the binding constraint.</li>
       </ul>
     </div>
   </section>
@@ -304,7 +329,7 @@ footer .footer-home-link:hover { background: var(--series-1); color: var(--surfa
 
   Chart.prototype.showTip = function (idx, rect) {
     var d = new Date(this.xs[idx]);
-    var html = '<div class="tdate">' + d.toISOString().slice(0, 10) + "</div>";
+    var html = '<div class="tdate">' + d.toISOString().slice(0, this.opts.monthly ? 7 : 10) + "</div>";
     for (var i = 0; i < this.series.length; i++) {
       var s = this.series[i], v = s.values[idx];
       html += '<div class="trow"><span class="swatch" style="background:' + s.color + '"></span>' +
@@ -451,6 +476,17 @@ footer .footer-home-link:hover { background: var(--series-1); color: var(--surfa
 
   var crack = new Chart("c-crack", "t-crack", { includeZero: false });
   var legs = new Chart("c-legs", "t-legs", { includeZero: true });
+  var deep = new Chart("c-deep", "t-deep", { includeZero: true, monthly: true });
+
+  // key -> label and color slot. Order is the fixed categorical order; a
+  // series keeps its color no matter which others are switched on.
+  var CRACK_SERIES = [
+    { key: "us", name: "US crack — distillate × 42 − WTI", short: "US · WTI", varName: "--series-1" },
+    { key: "eu", name: "European crack — distillate × 42 − Brent", short: "Euro · Brent", varName: "--series-2" },
+    { key: "gulf", name: "US Gulf Coast crack — ULSD × 42 − WTI", short: "Gulf · WTI", varName: "--series-3" },
+    { key: "c321", name: "3-2-1 crack — (2 gasoline + 1 distillate − 3 WTI) ÷ 3", short: "3-2-1", varName: "--series-4" }
+  ];
+  var enabled = { us: true, eu: true, gulf: false, c321: false };
 
   // First index inside the selected range. Smoothing runs over the whole
   // series before slicing, so the left edge already has a full window.
@@ -474,10 +510,14 @@ footer .footer-home-link:hover { background: var(--series-1); color: var(--surfa
     var xs = d.ms.slice(drawFrom);
 
     var c1 = css("--series-1"), c2 = css("--series-2"), c3 = css("--series-3");
-    crack.setData(xs, [
-      { name: "US (WTI)", color: c1, values: sm.us.slice(drawFrom) },
-      { name: "Euro (Brent)", color: c2, values: sm.eu.slice(drawFrom) }
-    ]);
+    var picked = CRACK_SERIES.filter(function (s) { return enabled[s.key] && d.has[s.key]; });
+    if (!picked.length) picked = [CRACK_SERIES[0]];
+    crack.setData(xs, picked.map(function (s) {
+      return { name: s.short, color: css(s.varName), values: smoothSeries(d[s.key], n).slice(drawFrom) };
+    }));
+    document.getElementById("legend-crack").innerHTML = picked.map(function (s) {
+      return '<span class="item"><span class="swatch" style="background:' + css(s.varName) + '"></span>' + s.name + "</span>";
+    }).join("");
     legs.setData(xs, [
       { name: "Distillate ×42", color: c3, values: sm.dist.slice(drawFrom) },
       { name: "WTI", color: c1, values: sm.wti.slice(drawFrom) },
@@ -531,6 +571,14 @@ footer .footer-home-link:hover { background: var(--series-1); color: var(--surfa
       render();
     });
   });
+  document.querySelectorAll("[data-series]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var k = b.getAttribute("data-series");
+      enabled[k] = !enabled[k];
+      b.setAttribute("aria-pressed", enabled[k] ? "true" : "false");
+      render();
+    });
+  });
   document.querySelectorAll("[data-smooth]").forEach(function (b) {
     b.addEventListener("click", function () {
       document.querySelectorAll("[data-smooth]").forEach(function (o) { o.setAttribute("aria-pressed", "false"); });
@@ -550,25 +598,49 @@ footer .footer-home-link:hover { background: var(--series-1); color: var(--surfa
     (mq.addEventListener ? mq.addEventListener.bind(mq, "change") : mq.addListener.bind(mq))(function () { render(); });
   }
 
-  fetch("/api/data")
+  fetch("/api/data", { cache: "no-cache" })
     .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
     .then(function (p) {
+      function any(arr) { if (!arr) return false; for (var i = 0; i < arr.length; i++) if (arr[i] !== null) return true; return false; }
       var d = {
         dates: p.dates,
         ms: p.dates.map(function (s) { return Date.parse(s + "T00:00:00Z"); }),
-        us: p.us, eu: p.eu, wti: p.wti, brent: p.brent,
+        us: p.us, eu: p.eu, gulf: p.gulf || [], c321: p.c321 || [],
+        wti: p.wti, brent: p.brent,
         dist: p.distillate.map(function (g) { return g === null ? null : Math.round(g * 42 * 1000) / 1000; })
       };
+      d.has = { us: any(d.us), eu: any(d.eu), gulf: any(d.gulf), c321: any(d.c321) };
       state.data = d;
+
+      // A series the current source could not supply gets its toggle removed
+      // rather than left as a button that does nothing.
+      document.querySelectorAll("[data-series]").forEach(function (b) {
+        if (!d.has[b.getAttribute("data-series")]) b.remove();
+      });
+
       document.getElementById("status").style.display = "none";
       document.getElementById("range-note").textContent = p.dates[0];
       document.getElementById("splice").textContent = p.splice_date;
+      document.getElementById("source-name").textContent =
+        p.source === "eia" ? "EIA API v2" : "FRED (EIA fallback)";
       document.getElementById("stamp").textContent =
         p.dates.length.toLocaleString() + " daily observations, " + p.dates[0] + " to " + p.dates[p.dates.length - 1] +
-        " · data refreshed " + p.updated.replace("T", " ").replace("+00:00", " UTC");
+        " · source " + (p.source === "eia" ? "EIA API v2" : "FRED") +
+        " · refreshed " + p.updated.replace("T", " ").replace("+00:00", " UTC");
       buildTiles(d);
       buildTable(d);
       render();
+
+      if (p.monthly && p.monthly.periods && p.monthly.periods.length) {
+        var m = p.monthly;
+        var first = m.crack.findIndex(function (v) { return v !== null; });
+        var xs = m.periods.slice(first).map(function (s) { return Date.parse(s + "-01T00:00:00Z"); });
+        document.getElementById("card-deep").style.display = "";
+        var lastCrack = m.periods[m.crack.length - 1 - m.crack.slice().reverse().findIndex(function (v) { return v !== null; })];
+        document.getElementById("deep-end").textContent = lastCrack;
+        document.getElementById("deep-start").textContent = m.periods[first];
+        deep.setData(xs, [{ name: "Refiner crack", color: css("--series-4"), values: m.crack.slice(first) }]);
+      }
     })
     .catch(function (e) {
       document.getElementById("status").textContent = "Could not load price data (" + e.message + "). The upstream feed may be briefly unavailable — try a reload in a minute.";

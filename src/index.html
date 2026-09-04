@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diesel Crack Spread — 40 Years of History</title>
+<meta name="description" content="Historical diesel crack spread, US (WTI) and European/Atlantic-basin (Brent), computed daily from EIA spot prices via FRED.">
+<style>
+:root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --plane: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --tooltip-bg: rgba(252,252,251,0.97);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --plane: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --border: rgba(255,255,255,0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --tooltip-bg: rgba(26,26,25,0.97);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-1: #1a1a19;
+  --plane: #0d0d0d;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --border: rgba(255,255,255,0.10);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --tooltip-bg: rgba(26,26,25,0.97);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--plane);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 32px 20px 8px; }
+
+header h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.02em; }
+header p.sub { margin: 0; color: var(--text-secondary); max-width: 62ch; }
+.stamp { margin-top: 10px; font-size: 0.82rem; color: var(--muted); }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 24px 0 8px; }
+.tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.tile .label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+.swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.tile .value { font-size: 1.85rem; font-weight: 650; letter-spacing: -0.02em; margin-top: 4px; }
+.tile .note { font-size: 0.8rem; color: var(--text-secondary); }
+
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 14px; margin: 16px 0; }
+.card h2 { font-size: 1.05rem; margin: 0 0 2px; letter-spacing: -0.01em; }
+.card p.cap { margin: 0 0 12px; font-size: 0.85rem; color: var(--text-secondary); }
+
+.controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-bottom: 12px; }
+.group { display: flex; gap: 4px; flex-wrap: wrap; }
+.group .glabel { font-size: 0.78rem; color: var(--muted); align-self: center; margin-right: 4px; }
+button.seg {
+  font: inherit; font-size: 0.82rem; padding: 5px 11px; cursor: pointer;
+  background: transparent; color: var(--text-secondary);
+  border: 1px solid var(--border); border-radius: 999px;
+}
+button.seg:hover { background: var(--grid); }
+button.seg[aria-pressed="true"] { background: var(--text-primary); color: var(--surface-1); border-color: var(--text-primary); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 0 8px; font-size: 0.85rem; color: var(--text-secondary); }
+.legend span.item { display: flex; align-items: center; gap: 7px; }
+.legend .swatch { width: 14px; height: 3px; border-radius: 2px; }
+
+.plot { position: relative; width: 100%; }
+canvas { display: block; width: 100%; touch-action: pan-y; }
+.tooltip {
+  position: absolute; pointer-events: none; opacity: 0; transition: opacity .08s;
+  background: var(--tooltip-bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; font-size: 0.8rem; line-height: 1.45; white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.14); z-index: 5; color: var(--text-primary);
+}
+.tooltip .tdate { color: var(--muted); font-size: 0.74rem; margin-bottom: 3px; }
+.tooltip .trow { display: flex; align-items: center; gap: 7px; }
+.tooltip .tval { font-variant-numeric: tabular-nums; margin-left: auto; padding-left: 14px; font-weight: 600; }
+
+.status { color: var(--text-secondary); font-size: 0.9rem; padding: 40px 0; text-align: center; }
+
+table { border-collapse: collapse; width: 100%; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.tablewrap { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+
+.formula {
+  background: var(--plane); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px 16px; margin: 10px 0 16px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.95rem; overflow-x: auto;
+}
+.prose { font-size: 0.92rem; color: var(--text-secondary); }
+.prose h3 { font-size: 0.95rem; color: var(--text-primary); margin: 18px 0 6px; }
+.prose ul { padding-left: 20px; margin: 6px 0; }
+.prose li { margin-bottom: 7px; }
+.prose a { color: var(--series-1); }
+.prose code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.88em; background: var(--plane); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+
+footer.chrislawrence-footer {
+  margin-top: 40px; padding: 28px 20px 34px; text-align: center;
+  border-top: 1px solid var(--border); background: var(--surface-1);
+}
+footer .footer-logo { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; margin-bottom: 12px; }
+footer .footer-home-link {
+  display: inline-block; text-decoration: none; font-size: 0.95rem; font-weight: 600;
+  color: var(--series-1); border: 1px solid var(--series-1); border-radius: 999px; padding: 8px 20px;
+}
+footer .footer-home-link:hover { background: var(--series-1); color: var(--surface-1); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Diesel Crack Spread</h1>
+    <p class="sub">The refiner's margin on the diesel leg: what a barrel's worth of NY Harbor distillate fetches over the crude it was made from. US version priced against WTI, European / Atlantic-basin version against Brent.</p>
+    <p class="stamp" id="stamp">Loading data…</p>
+  </header>
+
+  <div class="tiles" id="tiles"></div>
+
+  <section class="card">
+    <h2>Crack spread, full history</h2>
+    <p class="cap">Dollars per barrel. Daily observations from <span id="range-note">1986</span> to present. Negative means the diesel leg alone lost money against crude.</p>
+    <div class="controls">
+      <div class="group" role="group" aria-label="Time range">
+        <span class="glabel">Range</span>
+        <button class="seg" data-range="max" aria-pressed="true">Max</button>
+        <button class="seg" data-range="20">20y</button>
+        <button class="seg" data-range="10">10y</button>
+        <button class="seg" data-range="5">5y</button>
+        <button class="seg" data-range="1">1y</button>
+      </div>
+      <div class="group" role="group" aria-label="Smoothing">
+        <span class="glabel">Smoothing</span>
+        <button class="seg" data-smooth="1">Daily</button>
+        <button class="seg" data-smooth="20" aria-pressed="true">4-week</button>
+        <button class="seg" data-smooth="60">12-week</button>
+        <button class="seg" data-smooth="250">1-year</button>
+      </div>
+    </div>
+    <div class="legend">
+      <span class="item"><span class="swatch" style="background:var(--series-1)"></span> US crack — ULSD × 42 − WTI</span>
+      <span class="item"><span class="swatch" style="background:var(--series-2)"></span> European crack — ULSD × 42 − Brent</span>
+    </div>
+    <div class="plot"><canvas id="c-crack" height="380"></canvas><div class="tooltip" id="t-crack"></div></div>
+    <p class="status" id="status">Fetching 40 years of daily spot prices…</p>
+  </section>
+
+  <section class="card">
+    <h2>The legs, in the same units</h2>
+    <p class="cap">Dollars per barrel. The crack above is simply the gap between the distillate line and each crude line.</p>
+    <div class="legend">
+      <span class="item"><span class="swatch" style="background:var(--series-3)"></span> NY Harbor distillate × 42</span>
+      <span class="item"><span class="swatch" style="background:var(--series-1)"></span> WTI</span>
+      <span class="item"><span class="swatch" style="background:var(--series-2)"></span> Brent</span>
+    </div>
+    <div class="plot"><canvas id="c-legs" height="300"></canvas><div class="tooltip" id="t-legs"></div></div>
+  </section>
+
+  <section class="card">
+    <h2>Annual averages</h2>
+    <p class="cap">Mean of daily observations per calendar year, $/bbl. The same numbers the charts draw.</p>
+    <div class="tablewrap"><table id="tbl">
+      <thead><tr><th>Year</th><th>US crack</th><th>Euro crack</th><th>Distillate ×42</th><th>WTI</th><th>Brent</th><th>Days</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section class="card">
+    <h2>The formula</h2>
+    <p class="prose" style="margin-top:0">Diesel crack is ULSD minus crude, per barrel. ULSD quotes in $/gal, so multiply by 42:</p>
+    <div class="formula">crack ($/bbl) = ULSD ($/gal) × 42 − WTI ($/bbl)</div>
+    <div class="formula">crack ($/bbl) = ULSD ($/gal) × 42 − Brent ($/bbl)&nbsp;&nbsp;<span style="color:var(--muted)">← European / Atlantic-basin</span></div>
+    <div class="prose">
+      <p>Use Brent instead of WTI if you're looking at European / Atlantic-basin refining margins. There's no separate "diesel contract" — NY Harbor ULSD (NYMEX ticker <code>HO</code>) <em>is</em> the diesel benchmark; the name is a leftover from when it was heating oil.</p>
+
+      <h3>Sources</h3>
+      <ul>
+        <li><strong>FRED (Federal Reserve Bank of St. Louis)</strong> — every series on this page, pulled daily from the keyless CSV endpoint:
+          <ul>
+            <li><a href="https://fred.stlouisfed.org/series/DDFUELNYH">DDFUELNYH</a> — ULSD spot, NY Harbor, $/gal, daily from 2006-06-14</li>
+            <li><a href="https://fred.stlouisfed.org/series/DHOILNYH">DHOILNYH</a> — No. 2 heating oil spot, NY Harbor, $/gal, daily from 1986-06-02</li>
+            <li><a href="https://fred.stlouisfed.org/series/DCOILWTICO">DCOILWTICO</a> — WTI crude spot, Cushing OK, $/bbl, daily from 1986-01-02</li>
+            <li><a href="https://fred.stlouisfed.org/series/DCOILBRENTEU">DCOILBRENTEU</a> — Brent crude spot, Europe, $/bbl, daily from 1987-05-20</li>
+          </ul>
+        </li>
+        <li><strong>U.S. Energy Information Administration</strong> — the original source FRED redistributes.
+          <a href="https://www.eia.gov/dnav/pet/hist/eer_epd2f_pf4_y35ny_dpgM.htm">No. 2 heating oil spot, NY Harbor</a>;
+          API v2 endpoint <code>petroleum/pri/spt/data</code> carries the same series, plus <code>RWTC</code> for WTI.</li>
+        <li><strong>EIA Weekly Petroleum Status Report</strong>, <a href="https://www.eia.gov/petroleum/supply/weekly/pdf/table12.pdf">Table 12</a> — ULSD spot for NY Harbor, Gulf Coast and LA, if you just want a glance.</li>
+        <li><strong>Front-month futures alternative</strong> — TradingView accepts the spread expression <code>HO1!*42-CL1!</code> directly. Barchart and Investing.com carry HO and CL history as CSV.</li>
+      </ul>
+
+      <h3>Notes on the series</h3>
+      <ul>
+        <li><strong>Depth.</strong> The distillate leg is spliced: ULSD (<code>DDFUELNYH</code>) from <span id="splice">2006-06-14</span> onward, No.&nbsp;2 heating oil (<code>DHOILNYH</code>) before that. Same NY Harbor barge market, different sulfur spec — ULSD carries a small quality premium over high-sulfur heating oil, so pre-2006 levels are marginally understated. That splice is what buys the history: daily ULSD alone only reaches 2006. Forty years, not fifty — 1986-06-02 is where the daily spot record begins.</li>
+        <li><strong>"European" crack.</strong> This is NY Harbor distillate against Brent — the Atlantic-basin margin as the formula defines it, not a Rotterdam gasoil quote. A true northwest-European crack would use ICE Low Sulphur Gasoil against Brent; that series isn't in a free keyless feed.</li>
+        <li><strong>Spot, not futures.</strong> These are physical spot assessments, so the level differs slightly from the front-month <code>HO1!−CL1!</code> futures crack.</li>
+        <li><strong>Refinery economics.</strong> If you're modelling a whole refinery rather than the diesel leg, the 3-2-1 crack (3 crude, 2 gasoline, 1 distillate) is the standard proxy, and Gulf Coast ULSD (<code>DDFUELUSGULF</code>) is usually the better regional reference than NY Harbor.</li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<footer class="chrislawrence-footer">
+  <img class="footer-logo" src="/shared-footer/logo-portrait.png" alt="Chris Lawrence">
+  <div><a class="footer-home-link" href="https://chrislawrence.ca">Visit main site: chrislawrence.ca</a></div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var DAY = 86400000;
+  var state = { data: null, range: "max", smooth: 20 };
+
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function fmt(v, d) { return v === null || v === undefined || !isFinite(v) ? "—" : (v < 0 ? "−" : "") + "$" + Math.abs(v).toFixed(d === undefined ? 2 : d); }
+
+  // Rolling mean over n observations, nulls skipped rather than treated as zero.
+  function smoothSeries(arr, n) {
+    if (n <= 1) return arr.slice();
+    var out = new Array(arr.length), sum = 0, count = 0, i, drop;
+    for (i = 0; i < arr.length; i++) {
+      if (arr[i] !== null) { sum += arr[i]; count++; }
+      if (i >= n) { drop = arr[i - n]; if (drop !== null) { sum -= drop; count--; } }
+      out[i] = count > 0 ? sum / count : null;
+    }
+    return out;
+  }
+
+  function niceTicks(lo, hi, target) {
+    var span = hi - lo;
+    if (span <= 0) span = 1;
+    var raw = span / target;
+    var mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    var norm = raw / mag;
+    var step = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10) * mag;
+    var ticks = [], t = Math.ceil(lo / step) * step;
+    for (; t <= hi + step * 0.001; t += step) ticks.push(Math.round(t / step) * step);
+    return ticks;
+  }
+
+  function Chart(canvasId, tooltipId, opts) {
+    this.canvas = document.getElementById(canvasId);
+    this.tip = document.getElementById(tooltipId);
+    this.opts = opts;
+    this.hover = null;
+    var self = this;
+    this.canvas.addEventListener("mousemove", function (e) { self.onMove(e.clientX); });
+    this.canvas.addEventListener("mouseleave", function () { self.hover = null; self.tip.style.opacity = 0; self.draw(); });
+    this.canvas.addEventListener("touchmove", function (e) { if (e.touches[0]) self.onMove(e.touches[0].clientX); }, { passive: true });
+    this.canvas.addEventListener("touchend", function () { self.hover = null; self.tip.style.opacity = 0; self.draw(); });
+  }
+
+  Chart.prototype.setData = function (xs, series) { this.xs = xs; this.series = series; this.hover = null; this.draw(); };
+
+  Chart.prototype.onMove = function (clientX) {
+    if (!this.geom || !this.xs.length) return;
+    var rect = this.canvas.getBoundingClientRect();
+    var g = this.geom;
+    var x = clientX - rect.left;
+    var frac = (x - g.left) / (g.right - g.left);
+    var idx = Math.round(frac * (this.xs.length - 1));
+    idx = Math.max(0, Math.min(this.xs.length - 1, idx));
+    if (idx === this.hover) return;
+    this.hover = idx;
+    this.draw();
+    this.showTip(idx, rect);
+  };
+
+  Chart.prototype.showTip = function (idx, rect) {
+    var d = new Date(this.xs[idx]);
+    var html = '<div class="tdate">' + d.toISOString().slice(0, 10) + "</div>";
+    for (var i = 0; i < this.series.length; i++) {
+      var s = this.series[i], v = s.values[idx];
+      html += '<div class="trow"><span class="swatch" style="background:' + s.color + '"></span>' +
+              s.name + '<span class="tval">' + fmt(v) + "</span></div>";
+    }
+    this.tip.innerHTML = html;
+    this.tip.style.opacity = 1;
+    var g = this.geom;
+    var px = g.left + (idx / Math.max(1, this.xs.length - 1)) * (g.right - g.left);
+    var w = this.tip.offsetWidth;
+    var left = px + 14;
+    if (left + w > rect.width - 4) left = px - w - 14;
+    if (left < 4) left = 4;
+    this.tip.style.left = left + "px";
+    this.tip.style.top = "14px";
+  };
+
+  Chart.prototype.draw = function () {
+    var cv = this.canvas, ctx = cv.getContext("2d");
+    var dpr = window.devicePixelRatio || 1;
+    var w = cv.clientWidth, h = parseInt(cv.getAttribute("height"), 10);
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    cv.style.height = h + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    if (!this.xs || !this.xs.length) return;
+
+    var pad = { l: 52, r: 12, t: 10, b: 26 };
+    var g = { left: pad.l, right: w - pad.r, top: pad.t, bottom: h - pad.b };
+    this.geom = g;
+
+    var lo = Infinity, hi = -Infinity, i, j, v;
+    for (i = 0; i < this.series.length; i++) {
+      var vals = this.series[i].values;
+      for (j = 0; j < vals.length; j++) { v = vals[j]; if (v !== null && isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } }
+    }
+    if (!isFinite(lo)) return;
+    var padY = (hi - lo) * 0.08 || 1;
+    lo -= padY; hi += padY;
+    if (this.opts.includeZero && lo > 0) lo = 0;
+
+    var muted = css("--muted"), grid = css("--grid"), axis = css("--axis");
+    var X = function (k) { return g.left + (k / Math.max(1, this.xs.length - 1)) * (g.right - g.left); }.bind(this);
+    var Y = function (val) { return g.bottom - ((val - lo) / (hi - lo)) * (g.bottom - g.top); };
+
+    // y grid
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    var yt = niceTicks(lo, hi, 6);
+    for (i = 0; i < yt.length; i++) {
+      var y = Y(yt[i]);
+      ctx.strokeStyle = grid; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(g.left, Math.round(y) + 0.5); ctx.lineTo(g.right, Math.round(y) + 0.5); ctx.stroke();
+      ctx.fillStyle = muted;
+      ctx.fillText("$" + (yt[i] < 0 ? "−" + Math.abs(yt[i]) : yt[i]), g.left - 8, y);
+    }
+
+    // zero line, where it matters
+    if (lo < 0 && hi > 0) {
+      ctx.strokeStyle = axis; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(g.left, Math.round(Y(0)) + 0.5); ctx.lineTo(g.right, Math.round(Y(0)) + 0.5); ctx.stroke();
+    }
+
+    // x ticks: whole years, thinned to fit
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    var firstYear = new Date(this.xs[0]).getUTCFullYear();
+    var lastYear = new Date(this.xs[this.xs.length - 1]).getUTCFullYear();
+    var years = lastYear - firstYear;
+    var stepY = years > 30 ? 5 : years > 12 ? 2 : years > 3 ? 1 : 0;
+    if (stepY > 0) {
+      for (var yr = Math.ceil(firstYear / stepY) * stepY; yr <= lastYear; yr += stepY) {
+        var ms = Date.UTC(yr, 0, 1);
+        var k = this.indexAt(ms);
+        if (k === null) continue;
+        var px = X(k);
+        ctx.strokeStyle = grid; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(Math.round(px) + 0.5, g.top); ctx.lineTo(Math.round(px) + 0.5, g.bottom); ctx.stroke();
+        ctx.fillStyle = muted; ctx.fillText(String(yr), px, g.bottom + 6);
+      }
+    } else {
+      var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      var d0 = new Date(this.xs[0]);
+      var cur = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1);
+      var stepM = years >= 1 ? 2 : 1;
+      var mi = 0;
+      while (cur <= this.xs[this.xs.length - 1]) {
+        var kk = this.indexAt(cur);
+        if (kk !== null && mi % stepM === 0) {
+          var pxm = X(kk);
+          ctx.strokeStyle = grid; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(Math.round(pxm) + 0.5, g.top); ctx.lineTo(Math.round(pxm) + 0.5, g.bottom); ctx.stroke();
+          var dm = new Date(cur);
+          ctx.fillStyle = muted;
+          ctx.fillText(months[dm.getUTCMonth()] + (dm.getUTCMonth() === 0 ? " " + dm.getUTCFullYear() : ""), pxm, g.bottom + 6);
+        }
+        var dd = new Date(cur); cur = Date.UTC(dd.getUTCFullYear(), dd.getUTCMonth() + 1, 1); mi++;
+      }
+    }
+
+    // axis baseline
+    ctx.strokeStyle = axis; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(g.left, Math.round(g.bottom) + 0.5); ctx.lineTo(g.right, Math.round(g.bottom) + 0.5); ctx.stroke();
+
+    // series
+    ctx.lineJoin = "round"; ctx.lineCap = "round";
+    for (i = 0; i < this.series.length; i++) {
+      var s = this.series[i];
+      ctx.strokeStyle = s.color; ctx.lineWidth = 2;
+      ctx.beginPath();
+      var pen = false;
+      for (j = 0; j < s.values.length; j++) {
+        v = s.values[j];
+        if (v === null || !isFinite(v)) { pen = false; continue; }
+        var xx = X(j), yy = Y(v);
+        if (!pen) { ctx.moveTo(xx, yy); pen = true; } else { ctx.lineTo(xx, yy); }
+      }
+      ctx.stroke();
+    }
+
+    // crosshair + markers
+    if (this.hover !== null) {
+      var hx = X(this.hover);
+      ctx.strokeStyle = axis; ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(Math.round(hx) + 0.5, g.top); ctx.lineTo(Math.round(hx) + 0.5, g.bottom); ctx.stroke();
+      ctx.setLineDash([]);
+      for (i = 0; i < this.series.length; i++) {
+        var sv = this.series[i].values[this.hover];
+        if (sv === null || !isFinite(sv)) continue;
+        ctx.beginPath(); ctx.arc(hx, Y(sv), 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = this.series[i].color; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = css("--surface-1"); ctx.stroke();
+      }
+    }
+  };
+
+  // Nearest index at or after a timestamp; null if beyond the data.
+  Chart.prototype.indexAt = function (ms) {
+    var xs = this.xs, lo = 0, hi = xs.length - 1;
+    if (ms < xs[0] || ms > xs[hi]) return null;
+    while (lo < hi) { var mid = (lo + hi) >> 1; if (xs[mid] < ms) lo = mid + 1; else hi = mid; }
+    return lo;
+  };
+
+  var crack = new Chart("c-crack", "t-crack", { includeZero: false });
+  var legs = new Chart("c-legs", "t-legs", { includeZero: true });
+
+  // First index inside the selected range. Smoothing runs over the whole
+  // series before slicing, so the left edge already has a full window.
+  function startIndex() {
+    var d = state.data, i = 0;
+    if (state.range === "max") return 0;
+    var cutoff = d.ms[d.ms.length - 1] - parseInt(state.range, 10) * 365.25 * DAY;
+    while (i < d.ms.length - 2 && d.ms[i] < cutoff) i++;
+    return i;
+  }
+
+  function render() {
+    var d = state.data;
+    if (!d) return;
+    var n = state.smooth;
+    var sm = {
+      us: smoothSeries(d.us, n), eu: smoothSeries(d.eu, n),
+      dist: smoothSeries(d.dist, n), wti: smoothSeries(d.wti, n), brent: smoothSeries(d.brent, n)
+    };
+    var drawFrom = startIndex();
+    var xs = d.ms.slice(drawFrom);
+
+    var c1 = css("--series-1"), c2 = css("--series-2"), c3 = css("--series-3");
+    crack.setData(xs, [
+      { name: "US (WTI)", color: c1, values: sm.us.slice(drawFrom) },
+      { name: "Euro (Brent)", color: c2, values: sm.eu.slice(drawFrom) }
+    ]);
+    legs.setData(xs, [
+      { name: "Distillate ×42", color: c3, values: sm.dist.slice(drawFrom) },
+      { name: "WTI", color: c1, values: sm.wti.slice(drawFrom) },
+      { name: "Brent", color: c2, values: sm.brent.slice(drawFrom) }
+    ]);
+  }
+
+  function lastValid(arr) { for (var i = arr.length - 1; i >= 0; i--) if (arr[i] !== null) return { v: arr[i], i: i }; return null; }
+
+  function buildTiles(d) {
+    var lu = lastValid(d.us), le = lastValid(d.eu);
+    var yearAgo = Math.max(0, d.ms.length - 253);
+    function avg(arr, from) { var s = 0, c = 0; for (var i = from; i < arr.length; i++) if (arr[i] !== null) { s += arr[i]; c++; } return c ? s / c : null; }
+    var tiles = [
+      { label: "US crack — latest", color: "var(--series-1)", value: lu ? fmt(lu.v) : "—", note: lu ? "as of " + d.dates[lu.i] : "" },
+      { label: "Euro crack — latest", color: "var(--series-2)", value: le ? fmt(le.v) : "—", note: le ? "as of " + d.dates[le.i] : "" },
+      { label: "US — trailing 12 months", color: "var(--series-1)", value: fmt(avg(d.us, yearAgo)), note: "mean of daily observations" },
+      { label: "US — since 1986", color: "var(--series-1)", value: fmt(avg(d.us, 0)), note: d.dates[0] + " onward" }
+    ];
+    document.getElementById("tiles").innerHTML = tiles.map(function (t) {
+      return '<div class="tile"><div class="label"><span class="swatch" style="background:' + t.color + '"></span>' + t.label +
+             '</div><div class="value">' + t.value + '</div><div class="note">' + t.note + "</div></div>";
+    }).join("");
+  }
+
+  function buildTable(d) {
+    var years = {}, i;
+    for (i = 0; i < d.dates.length; i++) {
+      var y = d.dates[i].slice(0, 4);
+      var b = years[y] || (years[y] = { n: 0, us: [0, 0], eu: [0, 0], dist: [0, 0], wti: [0, 0], brent: [0, 0] });
+      b.n++;
+      ["us", "eu", "dist", "wti", "brent"].forEach(function (k) {
+        var v = d[k][i];
+        if (v !== null) { b[k][0] += v; b[k][1]++; }
+      });
+    }
+    function m(p) { return p[1] ? fmt(p[0] / p[1]) : "—"; }
+    var keys = Object.keys(years).sort().reverse();
+    document.querySelector("#tbl tbody").innerHTML = keys.map(function (y) {
+      var b = years[y];
+      return "<tr><td>" + y + "</td><td>" + m(b.us) + "</td><td>" + m(b.eu) + "</td><td>" +
+             m(b.dist) + "</td><td>" + m(b.wti) + "</td><td>" + m(b.brent) + "</td><td>" + b.n + "</td></tr>";
+    }).join("");
+  }
+
+  document.querySelectorAll("[data-range]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll("[data-range]").forEach(function (o) { o.setAttribute("aria-pressed", "false"); });
+      b.setAttribute("aria-pressed", "true");
+      state.range = b.getAttribute("data-range");
+      render();
+    });
+  });
+  document.querySelectorAll("[data-smooth]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      document.querySelectorAll("[data-smooth]").forEach(function (o) { o.setAttribute("aria-pressed", "false"); });
+      b.setAttribute("aria-pressed", "true");
+      state.smooth = parseInt(b.getAttribute("data-smooth"), 10);
+      render();
+    });
+  });
+
+  var resizeTimer;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () { crack.draw(); legs.draw(); }, 120);
+  });
+  if (window.matchMedia) {
+    var mq = window.matchMedia("(prefers-color-scheme: dark)");
+    (mq.addEventListener ? mq.addEventListener.bind(mq, "change") : mq.addListener.bind(mq))(function () { render(); });
+  }
+
+  fetch("/api/data")
+    .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(function (p) {
+      var d = {
+        dates: p.dates,
+        ms: p.dates.map(function (s) { return Date.parse(s + "T00:00:00Z"); }),
+        us: p.us, eu: p.eu, wti: p.wti, brent: p.brent,
+        dist: p.distillate.map(function (g) { return g === null ? null : Math.round(g * 42 * 1000) / 1000; })
+      };
+      state.data = d;
+      document.getElementById("status").style.display = "none";
+      document.getElementById("range-note").textContent = p.dates[0];
+      document.getElementById("splice").textContent = p.splice_date;
+      document.getElementById("stamp").textContent =
+        p.dates.length.toLocaleString() + " daily observations, " + p.dates[0] + " to " + p.dates[p.dates.length - 1] +
+        " · data refreshed " + p.updated.replace("T", " ").replace("+00:00", " UTC");
+      buildTiles(d);
+      buildTable(d);
+      render();
+    })
+    .catch(function (e) {
+      document.getElementById("status").textContent = "Could not load price data (" + e.message + "). The upstream feed may be briefly unavailable — try a reload in a minute.";
+    });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+.env
+compose.override.yaml
+*.log
+data/
+__pycache__/
+*.pyc

@@ -14,16 +14,21 @@ import csv
 import io
 import json
 import os
+import re
 import threading
 import time
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 EIA_KEY = os.environ.get("EIA_API_KEY", "").strip()
 EIA_BASE = "https://api.eia.gov/v2"
 FRED_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={}"
+# EIA states its own release dates here, holiday shifts already applied. The
+# API itself carries no publication timestamp, so this page is the only
+# authoritative answer to "when does the next batch land".
+EIA_SPOT_PAGE = "https://www.eia.gov/dnav/pet/pet_pri_spt_s1_d.htm"
 UA = {"User-Agent": "diesel.chrislawrence.ca (crack spread chart)"}
 
 # Daily spot legs. EIA series id -> (short key, FRED fallback id or None).
@@ -78,7 +83,15 @@ MONTHLY_TRACKED = [
 ]
 EPSILON = 1e-9          # float-parse noise, not a real restatement
 REVISIONS_IN_PAYLOAD = 60  # most recent records embedded for the page
-REFRESH_SECONDS = 12 * 3600
+
+# EIA publishes these daily series in one weekly batch, normally Wednesday
+# "after 1:00 p.m. eastern" (17:00 UTC in EDT, 18:00 in EST), slipping to
+# Thursday in weeks with a Monday federal holiday. Rather than track that
+# calendar here, we simply check at fixed times of day that sit an hour or so
+# past the release window; the first slot catches a normal Wednesday, the
+# second covers a late or holiday-shifted post. Anchoring to wall clock also
+# means a redeploy no longer drifts the schedule.
+REFRESH_AT_UTC = ("18:15", "23:15")
 RETRY_BASE_SECONDS = 60      # first retry after a failure
 RETRY_MAX_SECONDS = 1800     # ceiling, so a long outage settles at 30 min
 RETRY_MAX_DOUBLINGS = 10     # keeps the shift bounded regardless of streak length
@@ -142,6 +155,34 @@ def fred_series(series_id):
     if not out:
         raise ValueError("no observations for %s" % series_id)
     return out
+
+
+def _mdy_after(text, label):
+    """Find `label: M/D/YYYY` in tag-stripped page text, as an ISO date."""
+    match = re.search(label + r":\s*(\d{1,2})/(\d{1,2})/(\d{4})", text)
+    if not match:
+        return None
+    month, day, year = (int(g) for g in match.groups())
+    try:
+        return date(year, month, day).isoformat()
+    except ValueError:
+        return None
+
+
+def fetch_release_dates():
+    """(last_release, next_release) straight from EIA's spot price page.
+
+    Optional: a failure here costs the page its "next release" line but must
+    never sink a refresh that otherwise succeeded.
+    """
+    try:
+        text = re.sub(r"<[^>]*>", " ", _get(EIA_SPOT_PAGE))
+    except Exception as exc:  # noqa: BLE001 - decorative, never fatal
+        print("release-date fetch failed: %s: %s" % (type(exc).__name__, exc), flush=True)
+        return None, None
+    # "Release Date" also occurs inside "Next Release Date", so anchor the
+    # first lookup to a position that is not preceded by "Next ".
+    return _mdy_after(text, r"(?<!Next )Release Date"), _mdy_after(text, r"Next Release Date")
 
 
 def fetch_daily():
@@ -232,6 +273,8 @@ def build_payload():
             payload["c321"].append(None)
 
     payload["monthly"] = fetch_monthly()
+    last_release, next_release = fetch_release_dates()
+    payload["release"] = {"last": last_release, "next": next_release}
     return payload
 
 
@@ -398,15 +441,29 @@ def load_cache():
         _state["fetched_at"] = os.path.getmtime(CACHE)
 
 
+def seconds_until_next_slot(now=None):
+    """Seconds until the soonest REFRESH_AT_UTC time of day."""
+    now = now or datetime.now(timezone.utc)
+    soonest = None
+    for slot in REFRESH_AT_UTC:
+        hour, minute = (int(part) for part in slot.split(":"))
+        moment = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if moment <= now:
+            moment += timedelta(days=1)
+        if soonest is None or moment < soonest:
+            soonest = moment
+    return max(1.0, (soonest - now).total_seconds())
+
+
 def next_delay(failures):
     """Seconds to wait before the next attempt.
 
-    A clean run waits the full interval. After a failure the wait starts at a
-    minute and doubles, capped at RETRY_MAX_SECONDS -- a transient EIA blip
-    costs a minute rather than the twelve hours a fixed interval would.
+    A clean run sleeps to the next scheduled slot. After a failure the wait
+    starts at a minute and doubles, capped at RETRY_MAX_SECONDS -- a transient
+    EIA blip costs a minute rather than waiting out the next slot.
     """
     if failures <= 0:
-        return REFRESH_SECONDS
+        return seconds_until_next_slot()
     doublings = min(failures - 1, RETRY_MAX_DOUBLINGS)
     return min(RETRY_BASE_SECONDS * (2 ** doublings), RETRY_MAX_SECONDS)
 
@@ -462,6 +519,7 @@ class Handler(BaseHTTPRequestHandler):
                     "fetched_at": fetched_at,
                     "revisions_total": payload.get("revisions", {}).get("total", 0),
                     "revisions_last_run": payload.get("revisions", {}).get("last_run", 0),
+                    "release": payload.get("release"),
                     "consecutive_failures": failures,
                     "next_attempt_in": round(next_attempt - time.time()) if next_attempt else None,
                     "last_error": last_error,

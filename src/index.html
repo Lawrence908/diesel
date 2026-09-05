@@ -71,7 +71,11 @@ body {
 
 header h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.02em; }
 header p.sub { margin: 0; color: var(--text-secondary); max-width: 62ch; }
-.stamp { margin-top: 10px; font-size: 0.82rem; color: var(--muted); }
+.fresh { margin-top: 14px; font-size: 0.9rem; color: var(--text-secondary); max-width: 68ch; }
+.fresh:empty { display: none; }
+.fresh b { color: var(--text-primary); font-weight: 620; }
+.fresh .lag { color: var(--muted); }
+.stamp { margin-top: 6px; font-size: 0.82rem; color: var(--muted); }
 
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 24px 0 8px; }
 .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
@@ -159,6 +163,7 @@ footer.chrislawrence-footer {
   <header>
     <h1>Diesel Crack Spread</h1>
     <p class="sub">The refiner's margin on the diesel leg: what a barrel's worth of NY Harbor distillate fetches over the crude it was made from. US version priced against WTI, European / Atlantic-basin version against Brent.</p>
+    <p class="fresh" id="fresh"></p>
     <p class="stamp" id="stamp">Loading data…</p>
   </header>
 
@@ -692,10 +697,50 @@ footer.chrislawrence-footer {
       document.getElementById("splice").textContent = p.splice_date;
       document.getElementById("source-name").textContent =
         p.source === "eia" ? "EIA API v2" : "FRED (EIA fallback)";
+      // Freshness in plain language. EIA publishes these daily series in one
+      // weekly batch (normally Wednesday afternoon eastern), so the newest
+      // trading day is routinely a few days back. That is upstream cadence
+      // rather than a stalled page, and saying so plainly stops it reading as
+      // a bug. Times are Pacific for the usual reader, with UTC alongside.
+      var PACIFIC = "America/Los_Angeles";
+
+      function dayWords(ymd, withYear) {
+        var q = ymd.split("-");
+        // Built and read back in UTC so the calendar day cannot shift under a
+        // viewer whose clock is behind it.
+        return new Date(Date.UTC(+q[0], +q[1] - 1, +q[2])).toLocaleDateString("en-US", {
+          timeZone: "UTC", weekday: "long", month: "long", day: "numeric",
+          year: withYear ? "numeric" : undefined
+        });
+      }
+
+      function momentWords(iso) {
+        var t = new Date(iso);
+        return t.toLocaleString("en-US", {
+          timeZone: PACIFIC, month: "short", day: "numeric",
+          hour: "numeric", minute: "2-digit", timeZoneName: "short"
+        }) + " (" + t.toLocaleTimeString("en-GB", {
+          timeZone: "UTC", hour: "2-digit", minute: "2-digit"
+        }) + " UTC)";
+      }
+
+      var newest = p.dates[p.dates.length - 1];
+      var release = p.release || {};
+      var checkedHoursAgo = (Date.now() - Date.parse(p.updated)) / 36e5;
+      var freshness = [
+        checkedHoursAgo > 36
+          ? "Last successful check was " + momentWords(p.updated) + ", longer ago than expected."
+          : "Up to date with EIA as of " + momentWords(p.updated) + ".",
+        "Their most recent published trading day is <b>" + dayWords(newest, true) +
+          "</b>, which is the last point on these charts.",
+        "<span class=\"lag\">EIA releases these prices once a week, normally Wednesday afternoon" +
+          (release.next ? "; the next one is " + dayWords(release.next, false) : "") + ".</span>"
+      ];
+      document.getElementById("fresh").innerHTML = freshness.join(" ");
+
       document.getElementById("stamp").textContent =
-        p.dates.length.toLocaleString() + " daily observations, " + p.dates[0] + " to " + p.dates[p.dates.length - 1] +
-        " · source " + (p.source === "eia" ? "EIA API v2" : "FRED") +
-        " · refreshed " + p.updated.replace("T", " ").replace("+00:00", " UTC");
+        p.dates.length.toLocaleString() + " daily observations, " + p.dates[0] + " to " + newest +
+        " · source " + (p.source === "eia" ? "EIA API v2" : "FRED");
       buildTiles(d);
       buildTable(d);
       buildRevisions(p.revisions);

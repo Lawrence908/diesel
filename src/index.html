@@ -71,7 +71,21 @@ body {
 
 header h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.02em; }
 header p.sub { margin: 0; color: var(--text-secondary); max-width: 62ch; }
-.fresh { margin-top: 14px; font-size: 0.9rem; color: var(--text-secondary); max-width: 68ch; }
+.lagchip {
+  display: inline-flex; align-items: baseline; gap: 8px; margin-top: 16px;
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface-1); font-size: 0.8rem; color: var(--text-secondary);
+}
+.lagchip[hidden] { display: none; }
+.lagchip .dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--series-1);
+  flex: none; align-self: center;
+}
+/* Amber only while a release is overdue against its own schedule -- a lag
+   that is merely long because of a holiday week is still normal. */
+.lagchip[data-state="overdue"] .dot { background: var(--series-2); }
+.lagchip .typical { color: var(--muted); }
+.fresh { margin-top: 10px; font-size: 0.9rem; color: var(--text-secondary); max-width: 68ch; }
 .fresh:empty { display: none; }
 .fresh b { color: var(--text-primary); font-weight: 620; }
 .fresh .lag { color: var(--muted); }
@@ -163,6 +177,7 @@ footer.chrislawrence-footer {
   <header>
     <h1>Diesel Crack Spread</h1>
     <p class="sub">The refiner's margin on the diesel leg: what a barrel's worth of NY Harbor distillate fetches over the crude it was made from. US version priced against WTI, European / Atlantic-basin version against Brent.</p>
+    <p class="lagchip" id="lagchip" hidden></p>
     <p class="fresh" id="fresh"></p>
     <p class="stamp" id="stamp">Loading data…</p>
   </header>
@@ -724,9 +739,47 @@ footer.chrislawrence-footer {
         }) + " UTC)";
       }
 
+      // Business days strictly after `fromYmd` through `toYmd`. Weekends only:
+      // pricing in federal holidays would need a calendar to maintain, and
+      // being one day generous does not change how the number reads.
+      function businessDaysBetween(fromYmd, toYmd) {
+        var from = fromYmd.split("-"), to = toYmd.split("-");
+        var day = new Date(Date.UTC(+from[0], +from[1] - 1, +from[2]));
+        var end = Date.UTC(+to[0], +to[1] - 1, +to[2]);
+        var count = 0;
+        day.setUTCDate(day.getUTCDate() + 1);
+        while (day.getTime() <= end) {
+          var weekday = day.getUTCDay();
+          if (weekday !== 0 && weekday !== 6) count += 1;
+          day.setUTCDate(day.getUTCDate() + 1);
+        }
+        return count;
+      }
+
       var newest = p.dates[p.dates.length - 1];
       var release = p.release || {};
       var checkedHoursAgo = (Date.now() - Date.parse(p.updated)) / 36e5;
+
+      // Today as the reader in Pacific sees it, not as the viewer's clock zone
+      // happens to be set. en-CA formats as YYYY-MM-DD, so these stay
+      // string-comparable against the payload's dates.
+      var todayPacific = new Intl.DateTimeFormat("en-CA", {
+        timeZone: PACIFIC, year: "numeric", month: "2-digit", day: "2-digit"
+      }).format(new Date());
+
+      var lagDays = businessDaysBetween(newest, todayPacific);
+      // A long lag during a holiday week is still normal; the only real signal
+      // is EIA's own next-release date passing with nothing new behind it.
+      var overdue = !!(release.next && todayPacific > release.next);
+      var chip = document.getElementById("lagchip");
+      chip.innerHTML = "<span class=\"dot\"></span>" +
+        "<span>EIA lags ~" + lagDays + " business day" + (lagDays === 1 ? "" : "s") + "</span>" +
+        "<span class=\"typical\">· typical 1–5</span>";
+      chip.setAttribute("data-state", overdue ? "overdue" : "normal");
+      chip.title = overdue
+        ? "EIA's own next release date has passed without new data appearing."
+        : "EIA publishes these daily prices in one weekly batch, normally Wednesday afternoon, so the newest trading day always sits a few business days back.";
+      chip.hidden = false;
       var freshness = [
         checkedHoursAgo > 36
           ? "Last successful check was " + momentWords(p.updated) + ", longer ago than expected."

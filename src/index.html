@@ -150,27 +150,11 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
 .prose a { color: var(--series-1); }
 .prose code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.88em; background: var(--plane); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
 
-/* Hub footer — same structure as ping/harborline (logo inside the link),
-   ported to this page's palette rather than loading shared-footer/footer.css,
-   which expects Bootstrap. */
-footer.chrislawrence-footer {
-  display: flex; align-items: center; justify-content: center;
-  margin-top: 40px; padding: 2rem 1rem;
-  border-top: 1px solid var(--border); background: var(--surface-1);
-}
-.footer-home-link {
-  display: inline-flex; align-items: center; gap: 1rem;
-  padding: 0.75rem 1.5rem;
-  border: 1px solid var(--border); border-radius: 12px;
-  background: var(--plane); color: var(--text-secondary);
-  font-size: 0.95rem; text-decoration: none;
-  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
-}
-.footer-home-link:hover {
-  background: var(--grid); border-color: var(--axis); transform: translateY(-2px);
-}
-.footer-logo { height: 40px; width: auto; border-radius: 8px; display: block; }
+/* The hub footer is styled by /shared-footer/footer.css, linked below and
+   served by Caddy's shared_footer snippet. Deliberately not restyled here:
+   one source of truth means a change to the shared file reaches this page. */
 </style>
+<link rel="stylesheet" href="/shared-footer/footer.css">
 </head>
 <body>
 <div class="wrap">
@@ -302,7 +286,8 @@ footer.chrislawrence-footer {
 
 <footer class="chrislawrence-footer">
   <a href="https://chrislawrence.ca" class="footer-home-link" aria-label="Back to chrislawrence.ca">
-    <img src="/shared-footer/logo-portrait.png" alt="Chris Lawrence" class="footer-logo" width="40" height="40" loading="lazy">
+    <img src="/shared-footer/logo-portrait.png" alt="Chris Lawrence" class="footer-logo"
+         width="32" height="32" loading="lazy" onerror="this.remove()">
     <span class="footer-home-link-text">Back to chrislawrence.ca</span>
   </a>
 </footer>

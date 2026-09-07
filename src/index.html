@@ -20,6 +20,10 @@
   --series-2: #eb6834;
   --series-3: #1baf7a;
   --series-4: #4a3aa7;
+  /* Recession bands sit behind the data, so they are a neutral tint rather
+     than a fifth series colour: context, not a line to read. */
+  --band: rgba(11,11,11,0.055);
+  --band-legend: rgba(11,11,11,0.16);
   --tooltip-bg: rgba(252,252,251,0.97);
 }
 @media (prefers-color-scheme: dark) {
@@ -37,6 +41,8 @@
     --series-2: #d95926;
     --series-3: #199e70;
     --series-4: #9085e9;
+    --band: rgba(255,255,255,0.075);
+    --band-legend: rgba(255,255,255,0.22);
     --tooltip-bg: rgba(26,26,25,0.97);
   }
 }
@@ -54,6 +60,8 @@
   --series-2: #d95926;
   --series-3: #199e70;
   --series-4: #9085e9;
+  --band: rgba(255,255,255,0.075);
+  --band-legend: rgba(255,255,255,0.22);
   --tooltip-bg: rgba(26,26,25,0.97);
 }
 
@@ -116,6 +124,7 @@ button.seg[aria-pressed="true"] { background: var(--text-primary); color: var(--
 .legend { display: flex; flex-wrap: wrap; gap: 16px; margin: 0 0 8px; font-size: 0.85rem; color: var(--text-secondary); }
 .legend span.item { display: flex; align-items: center; gap: 7px; }
 .legend .swatch { width: 14px; height: 3px; border-radius: 2px; }
+.legend .swatch.band { height: 11px; border-radius: 2px; }
 
 .plot { position: relative; width: 100%; }
 canvas { display: block; width: 100%; touch-action: pan-y; }
@@ -207,6 +216,7 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
       <span class="item"><span class="swatch" style="background:var(--series-3)"></span> NY Harbor distillate × 42</span>
       <span class="item"><span class="swatch" style="background:var(--series-1)"></span> WTI</span>
       <span class="item"><span class="swatch" style="background:var(--series-2)"></span> Brent</span>
+      <span class="item" id="band-legs" hidden><span class="swatch band" style="background:var(--band-legend)"></span> US recessions (NBER)</span>
     </div>
     <div class="plot"><canvas id="c-legs" height="300"></canvas><div class="tooltip" id="t-legs"></div></div>
   </section>
@@ -216,6 +226,7 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
     <p class="cap">Monthly, dollars per barrel, from <span id="deep-start">1983-01</span>. This is <strong>not</strong> the spot crack above and is not spliced into it — it is the only honest way to see the pre-1986 and early-1980s picture, and it answers a slightly different question.</p>
     <div class="legend">
       <span class="item"><span class="swatch" style="background:var(--series-4)"></span> Refiner distillate wholesale × 42 − refiner crude acquisition cost</span>
+      <span class="item" id="band-deep" hidden><span class="swatch band" style="background:var(--band-legend)"></span> US recessions (NBER)</span>
     </div>
     <div class="plot"><canvas id="c-deep" height="280"></canvas><div class="tooltip" id="t-deep"></div></div>
     <p class="prose" style="margin:10px 0 0">Both legs are refiner survey averages rather than spot markers: the product leg is the US average wholesale/resale price refiners charged for No. 2 distillate, and the crude leg is their composite acquisition cost, which lags the market and blends domestic with imported barrels. The level therefore sits above the spot crack and moves more slowly. EIA discontinued the refiner product series in <span id="deep-end">2022-03</span>; the crude series continues.</p>
@@ -279,7 +290,11 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
         <li><strong>Spot, not futures.</strong> These are physical spot assessments, so the level differs slightly from the front-month <code>HO1!−CL1!</code> futures crack.</li>
         <li><strong>Refinery economics.</strong> If you're modelling a whole refinery rather than the diesel leg, switch on the <strong>3-2-1</strong> series — three barrels of crude in, two of gasoline and one of distillate out, computed as (2 × gasoline × 42 + distillate × 42 − 3 × WTI) ÷ 3 from NY Harbor legs. The <strong>Gulf Coast</strong> series is usually the better regional reference than NY Harbor for US refining margins; both are off by default.</li>
         <li><strong>How far back diesel actually goes.</strong> Fifty years isn't reachable on the diesel leg from public data at any resolution. Daily spot begins 1986-06-02. The deepest published US distillate price of any kind is the refiner wholesale series at 1983-01 — that's the monthly panel, and it's a different price basis, so it's shown separately rather than pretending to extend the spot line. The crude side goes back to 1974 either way; diesel is the binding constraint.</li>
+        <li><strong>Recession bands.</strong> The shaded bands are US recessions, derived mechanically from NBER dates via <a href="https://fred.stlouisfed.org/series/USREC">FRED USREC</a> and shaded peak month through trough month inclusive. They come from the same dataset every tracker on this site shades from, so a band here lines up with the same band on <a href="https://jobs.chrislawrence.ca">jobs</a>. Refining margins are not a recession indicator and are not offered as one — a crack can collapse on a refinery outage or a warm winter with nothing macro behind it. The bands are there so you can see which moves had a recession underneath them and which did not.</li>
       </ul>
+
+      <h3>Comparability</h3>
+      <p>Every series on this page is also published in the shared shape the other trackers on this site use — stable id, units, frequency, provenance, confidence, and the splice above stated where it happens — at <code>/api/series</code>. That is what lets a $/bbl crack be put on common axes with an unemployment rate later without either page being rewritten first. The cracks are marked <code>estimate</code> rather than <code>reported</code>: neither EIA nor FRED publishes a spread, so the arithmetic is ours, and the raw legs it is computed from are published alongside it.</p>
     </div>
   </section>
 </div>
@@ -301,6 +316,21 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
 
   function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
   function fmt(v, d) { return v === null || v === undefined || !isFinite(v) ? "—" : (v < 0 ? "−" : "") + "$" + Math.abs(v).toFixed(d === undefined ? 2 : d); }
+
+  // Recession bands from the shared econ-core dataset, US only: every series on
+  // this page is a US or Atlantic-basin oil price, so the Canadian chronology
+  // in the same file has nothing to date here. Peak month through trough month
+  // inclusive, which is the convention the file itself declares.
+  function recessionBands(p) {
+    if (!p || !p.recessions || !p.recessions.us) return [];
+    return p.recessions.us.bands.map(function (b) {
+      var pk = b.peak.split("-"), tr = b.trough.split("-");
+      return {
+        start: Date.UTC(+pk[0], +pk[1] - 1, 1),
+        end: Date.UTC(+tr[0], +tr[1], 1) - DAY   // last day of the trough month
+      };
+    });
+  }
 
   // Rolling mean over n observations, nulls skipped rather than treated as zero.
   function smoothSeries(arr, n) {
@@ -350,6 +380,11 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
   }
 
   Chart.prototype.setData = function (xs, series) { this.xs = xs; this.series = series; this.hover = null; this.draw(); };
+
+  // Bands are set once from the payload and outlive every setData call, so
+  // they survive a range change, a resize and a theme flip without being
+  // rebuilt. No redraw here: the setData that follows does it.
+  Chart.prototype.setBands = function (bands) { this.bands = bands; };
 
   Chart.prototype.onMove = function (clientX) {
     if (!this.geom || !this.xs.length) return;
@@ -412,6 +447,22 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
     var muted = css("--muted"), grid = css("--grid"), axis = css("--axis");
     var X = function (k) { return g.left + (k / Math.max(1, this.xs.length - 1)) * (g.right - g.left); }.bind(this);
     var Y = function (val) { return g.bottom - ((val - lo) / (hi - lo)) * (g.bottom - g.top); };
+
+    // Recession bands first, behind the grid and the data: context to read the
+    // lines against, not a series competing with them. A band that begins
+    // before this view is clipped to the left edge rather than dropped, so a
+    // 5-year window still shows the part of a recession it contains.
+    if (this.bands && this.bands.length) {
+      var first = this.xs[0], last = this.xs[this.xs.length - 1];
+      ctx.fillStyle = css("--band");
+      for (i = 0; i < this.bands.length; i++) {
+        var bd = this.bands[i];
+        if (bd.end < first || bd.start > last) continue;
+        var xa = X(this.indexAt(Math.max(bd.start, first)));
+        var xb = X(this.indexAt(Math.min(bd.end, last)));
+        ctx.fillRect(xa, g.top, Math.max(1, xb - xa), g.bottom - g.top);
+      }
+    }
 
     // y grid
     ctx.font = "11px system-ui, sans-serif";
@@ -564,9 +615,14 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
     crack.setData(xs, picked.map(function (s) {
       return { name: s.short, color: css(s.varName), values: smoothSeries(d[s.key], n).slice(drawFrom) };
     }));
-    document.getElementById("legend-crack").innerHTML = picked.map(function (s) {
+    var items = picked.map(function (s) {
       return '<span class="item"><span class="swatch" style="background:' + css(s.varName) + '"></span>' + s.name + "</span>";
-    }).join("");
+    });
+    if (crack.bands && crack.bands.length) {
+      items.push('<span class="item"><span class="swatch band" style="background:' +
+                 css("--band-legend") + '"></span>US recessions (NBER)</span>');
+    }
+    document.getElementById("legend-crack").innerHTML = items.join("");
     legs.setData(xs, [
       { name: "Distillate ×42", color: c3, values: sm.dist.slice(drawFrom) },
       { name: "WTI", color: c1, values: sm.wti.slice(drawFrom) },
@@ -686,6 +742,16 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
       d.has = { us: any(d.us), eu: any(d.eu), gulf: any(d.gulf), c321: any(d.c321) };
       state.data = d;
 
+      // One recession dataset for all three charts, set before the first
+      // render. If it did not load, no bands are drawn and the legend entries
+      // stay hidden rather than promising shading that is not there.
+      var bands = recessionBands(p);
+      crack.setBands(bands); legs.setBands(bands); deep.setBands(bands);
+      if (bands.length) {
+        document.getElementById("band-legs").hidden = false;
+        document.getElementById("band-deep").hidden = false;
+      }
+
       // A series the current source could not supply gets its toggle removed
       // rather than left as a button that does nothing.
       document.querySelectorAll("[data-series]").forEach(function (b) {
@@ -694,7 +760,8 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
 
       document.getElementById("status").style.display = "none";
       document.getElementById("range-note").textContent = p.dates[0];
-      document.getElementById("splice").textContent = p.splice_date;
+      document.getElementById("splice").textContent =
+        (p.splices && p.splices[0] && p.splices[0].at) || "2006-06-14";
       document.getElementById("source-name").textContent =
         p.source === "eia" ? "EIA API v2" : "FRED (EIA fallback)";
       // Freshness in plain language. EIA publishes these daily series in one

@@ -8,10 +8,20 @@ Gulf Coast leg, the 3-2-1 crack, or the pre-1986 monthly history.
 
 Everything is cached to disk, so an outage at either source cannot blank the
 page.
+
+Two shapes come out of one refresh. crack.json is the page's payload: columnar,
+aligned on one date axis, cheap to render. series.json is the same numbers in
+the econ-core contract shape, so the overlay site can put diesel's cracks on
+common axes with jobs and debt without special-casing this app. The columnar
+form stays the artifact the page reads; neither is derived from the other at
+render time.
+
+FRED, StatCan and the shared revision log are reached through econcore, the
+vendored copy of econ-core. That is where the collection's fetch policy lives,
+including the one that matters here: fredgraph.csv tarpits unrecognised
+User-Agents, so the keyless CSV route must go out under urllib's default.
 """
 
-import csv
-import io
 import json
 import os
 import re
@@ -22,9 +32,11 @@ import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import econcore
+
 EIA_KEY = os.environ.get("EIA_API_KEY", "").strip()
+FRED_KEY = os.environ.get("FRED_API_KEY", "").strip()
 EIA_BASE = "https://api.eia.gov/v2"
-FRED_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={}"
 # EIA states its own release dates here, holiday shifts already applied. The
 # API itself carries no publication timestamp, so this page is the only
 # authoritative answer to "when does the next batch land".
@@ -60,10 +72,22 @@ SOURCE_NOTES = {
     "R0000____3": "US crude oil composite acquisition cost by refiners ($/bbl), monthly from 1974-01",
 }
 
+# The one seam in the daily record. ULSD only reaches 2006; No. 2 heating oil
+# before it is the same NY Harbor barge market on a different sulfur spec, so
+# the join buys twenty extra years at the cost of a small understatement.
+# Stated here once and carried by every series built on the distillate leg.
+SPLICE = {
+    "note": "NY Harbor ULSD from this date onward, No. 2 heating oil before it. "
+            "Same barge market, different sulfur spec: ULSD carries a small "
+            "quality premium, so pre-2006 levels are marginally understated.",
+}
+
 GAL_PER_BBL = 42
 EIA_PAGE = 5000  # the API's hard JSON row cap
 DATA_DIR = os.environ.get("DATA_DIR", "/app/data")
 CACHE = os.path.join(DATA_DIR, "crack.json")
+SERIES_FILE = os.path.join(DATA_DIR, "series.json")
+RECESSIONS = os.path.join(DATA_DIR, "recessions.json")
 REVISIONS = os.path.join(DATA_DIR, "revisions.jsonl")
 REVISIONS_META = os.path.join(DATA_DIR, "revisions-meta.json")
 
@@ -141,20 +165,14 @@ def eia_series(route, series_id, frequency):
 
 
 def fred_series(series_id):
-    """Return {date: float} for one FRED series (keyless CSV)."""
-    out = {}
-    reader = csv.reader(io.StringIO(_get(FRED_CSV.format(series_id))))
-    next(reader)
-    for row in reader:
-        if len(row) < 2 or row[1].strip() in ("", "."):
-            continue
-        try:
-            out[row[0].strip()] = float(row[1].strip())
-        except ValueError:
-            continue
-    if not out:
-        raise ValueError("no observations for %s" % series_id)
-    return out
+    """Return {date: float} for one FRED series, via econcore.
+
+    econcore owns the transport because the keyless CSV endpoint tarpits any
+    User-Agent it does not recognise as a known tool: this module's own UA
+    hangs until timeout, urllib's default answers in a fraction of a second.
+    Reached through the shared fetcher, the fallback cannot silently rot again.
+    """
+    return dict(econcore.fred_series(series_id, FRED_KEY))
 
 
 def _mdy_after(text, label):
@@ -237,12 +255,14 @@ def build_payload():
     payload = {
         "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "source": source,
-        "splice_date": min(ulsd),
+        # econ-core's generalisation of what used to be a bare splice_date:
+        # every seam stated where it happens, in the shape the contract uses.
+        "splices": [dict(SPLICE, at=min(ulsd))],
         "dates": dates,
         "us": [], "eu": [], "gulf": [], "c321": [],
         "distillate": [], "gulf_distillate": [], "gasoline": [],
         "wti": [], "brent": [],
-        "series": SOURCE_NOTES if source == "eia" else {
+        "source_notes": SOURCE_NOTES if source == "eia" else {
             k: v for k, v in SOURCE_NOTES.items() if k in ("RWTC", "RBRTE",
                 "EER_EPD2F_PF4_Y35NY_DPG", "EER_EPD2DXL0_PF4_Y35NY_DPG")
         },
@@ -276,6 +296,226 @@ def build_payload():
     last_release, next_release = fetch_release_dates()
     payload["release"] = {"last": last_release, "next": next_release}
     return payload
+
+
+# --------------------------------------------------------------------------
+# contract publication
+#
+# The columnar payload above is what the page reads; this is the same numbers
+# in econ-core's series shape, so the overlay site can put a $/bbl crack on
+# common axes with a percentage-point spread from jobs or debt without knowing
+# anything about diesel. It goes to its own file rather than into the page
+# payload: contract obs are [date, value] pairs, and ten thousand daily points
+# across nine series is a couple of megabytes the page would fetch and ignore.
+#
+# Cracks are `estimate` rather than `reported` for the same reason jobs marks
+# its year-over-year lines that way -- neither EIA nor FRED publishes a spread,
+# so the arithmetic is ours and the reader should be able to see that it is.
+# --------------------------------------------------------------------------
+
+FRED_SERIES_PAGE = "https://fred.stlouisfed.org/series/"
+EIA_REFOTH_PAGE = "https://www.eia.gov/dnav/pet/pet_pri_refoth_dcu_nus_m.htm"
+EIA_RAC_PAGE = "https://www.eia.gov/dnav/pet/pet_pri_rac2_dcu_nus_m.htm"
+
+NY_DISTILLATE_EIA = ["EER_EPD2DXL0_PF4_Y35NY_DPG", "EER_EPD2F_PF4_Y35NY_DPG"]
+NY_DISTILLATE_FRED = ["DDFUELNYH", "DHOILNYH"]
+
+CONTRACT_DAILY = [
+    {
+        "id": "us_diesel_crack_wti", "column": "us",
+        "label": "US diesel crack spread (NY Harbor vs WTI)",
+        "units": "USD_per_barrel", "confidence": "estimate", "spliced": True,
+        "eia": NY_DISTILLATE_EIA + ["RWTC"],
+        "fred": NY_DISTILLATE_FRED + ["DCOILWTICO"],
+        "note": "NY Harbor distillate spot times 42 gallons, minus WTI spot. "
+                "Computed here; neither source publishes the spread.",
+    },
+    {
+        "id": "us_diesel_crack_brent", "column": "eu",
+        "label": "Diesel crack spread against Brent (NY Harbor vs Brent)",
+        "units": "USD_per_barrel", "confidence": "estimate", "spliced": True,
+        "eia": NY_DISTILLATE_EIA + ["RBRTE"],
+        "fred": NY_DISTILLATE_FRED + ["DCOILBRENTEU"],
+        "note": "NY Harbor distillate against Brent: the Atlantic-basin margin "
+                "as the formula defines it, not a Rotterdam gasoil quote. A "
+                "true northwest-European crack would use ICE Low Sulphur "
+                "Gasoil, which is not in a free keyless feed.",
+    },
+    {
+        "id": "us_gulf_diesel_crack_wti", "column": "gulf",
+        "label": "US Gulf Coast diesel crack spread (ULSD vs WTI)",
+        "units": "USD_per_barrel", "confidence": "estimate", "spliced": False,
+        "eia": ["EER_EPD2DXL0_PF4_RGC_DPG", "RWTC"], "fred": [],
+        "note": "Gulf Coast ULSD spot times 42 minus WTI spot. Usually the "
+                "better regional reference for US refining margins than NY "
+                "Harbor. Begins 2006-06-14; there is no pre-ULSD Gulf leg to "
+                "splice, so this series is shorter and unspliced.",
+    },
+    {
+        "id": "us_321_crack_wti", "column": "c321",
+        "label": "US 3-2-1 crack spread (NY Harbor vs WTI)",
+        "units": "USD_per_barrel", "confidence": "estimate", "spliced": True,
+        "eia": ["EER_EPMRU_PF4_Y35NY_DPG"] + NY_DISTILLATE_EIA + ["RWTC"],
+        "fred": [],
+        "note": "Whole-refinery yield proxy: three barrels of crude in, two "
+                "gasoline and one distillate out, as "
+                "(2 x gasoline x 42 + distillate x 42 - 3 x WTI) / 3.",
+    },
+    {
+        "id": "us_ny_distillate_spot", "column": "distillate",
+        "label": "NY Harbor distillate spot price",
+        "units": "USD_per_gallon", "confidence": "reported", "spliced": True,
+        "eia": NY_DISTILLATE_EIA, "fred": NY_DISTILLATE_FRED,
+        "note": "The spliced product leg every NY Harbor crack on this page is "
+                "built from. Daily from 1986-06-02.",
+    },
+    {
+        "id": "us_gulf_ulsd_spot", "column": "gulf_distillate",
+        "label": "US Gulf Coast ULSD spot price",
+        "units": "USD_per_gallon", "confidence": "reported", "spliced": False,
+        "eia": ["EER_EPD2DXL0_PF4_RGC_DPG"], "fred": [],
+        "note": "Daily from 2006-06-14.",
+    },
+    {
+        "id": "us_ny_gasoline_spot", "column": "gasoline",
+        "label": "NY Harbor conventional regular gasoline spot price",
+        "units": "USD_per_gallon", "confidence": "reported", "spliced": False,
+        "eia": ["EER_EPMRU_PF4_Y35NY_DPG"], "fred": [],
+        "note": "Daily from 1986-06-02. Carried for the 3-2-1 crack.",
+    },
+    {
+        "id": "wti_crude_spot", "column": "wti",
+        "label": "WTI crude oil spot price (Cushing, OK)",
+        "units": "USD_per_barrel", "confidence": "reported", "spliced": False,
+        "eia": ["RWTC"], "fred": ["DCOILWTICO"],
+        "note": "FOB, daily from 1986-01-02.",
+    },
+    {
+        "id": "brent_crude_spot", "column": "brent",
+        "label": "Brent crude oil spot price (Europe)",
+        "units": "USD_per_barrel", "confidence": "reported", "spliced": False,
+        "eia": ["RBRTE"], "fred": ["DCOILBRENTEU"],
+        "note": "FOB, daily from 1987-05-20.",
+    },
+]
+
+# The deep monthly panel. A different price basis to the spot legs -- refiner
+# survey averages, not market markers -- so these are their own series and are
+# never spliced onto the daily ones. EIA only; no keyless equivalent exists.
+CONTRACT_MONTHLY = [
+    {
+        "id": "us_refiner_distillate_crack", "column": "crack",
+        "label": "US refiner distillate margin over crude acquisition cost",
+        "units": "USD_per_barrel", "confidence": "estimate",
+        "source": "EIA refiner survey: EMA_EPD2_PWG_NUS_DPG less R0000____3",
+        "source_url": EIA_REFOTH_PAGE,
+        "note": "Wholesale distillate revenue per barrel minus what refiners "
+                "paid for crude. Both legs are survey averages that lag the "
+                "market, so this sits above the spot crack and moves more "
+                "slowly. Monthly from 1983-01; the product leg was "
+                "discontinued 2022-03.",
+    },
+    {
+        "id": "us_refiner_distillate_wholesale", "column": "distillate",
+        "label": "US No. 2 distillate wholesale price by refiners",
+        "units": "USD_per_barrel", "confidence": "reported",
+        "source": "EIA refiner survey series EMA_EPD2_PWG_NUS_DPG",
+        "source_url": EIA_REFOTH_PAGE,
+        "note": "Published per gallon; converted to barrels at fetch time so "
+                "it shares an axis with the crude leg. Monthly 1983-01 to "
+                "2022-03, then discontinued.",
+    },
+    {
+        "id": "us_refiner_crude_acquisition_cost", "column": "rac",
+        "label": "US refiner composite crude oil acquisition cost",
+        "units": "USD_per_barrel", "confidence": "reported",
+        "source": "EIA refiner survey series R0000____3",
+        "source_url": EIA_RAC_PAGE,
+        "note": "Blends domestic with imported barrels and lags spot. Monthly "
+                "from 1974-01, the deepest crude series here.",
+    },
+]
+
+
+def _provenance(source, spec):
+    """(source string, source_url) for one daily series, naming the upstream
+    actually used. A series without provenance does not render, so this tracks
+    the fallback rather than always claiming EIA."""
+    if source == "fred" and spec["fred"]:
+        return ("FRED, redistributing EIA spot prices (%s)"
+                % ", ".join(spec["fred"]),
+                FRED_SERIES_PAGE + spec["fred"][0])
+    return ("EIA petroleum spot prices (%s)" % ", ".join(spec["eia"]),
+            EIA_SPOT_PAGE)
+
+
+def _obs(dates, values):
+    """[[date, value], ...] with gaps dropped rather than filled."""
+    return [[d, v] for d, v in zip(dates, values) if v is not None]
+
+
+def build_contract_series(payload):
+    """The payload's columns as contract documents. Returns (series, errors).
+
+    A series that fails validation is reported and skipped, never raised: one
+    malformed document must not cost the page its refresh.
+    """
+    source = payload.get("source")
+    splices = payload.get("splices") or []
+    series, errors = {}, {}
+
+    def add(spec, obs, source_name, source_url, freq):
+        if not obs:
+            return
+        try:
+            series[spec["id"]] = econcore.make_series(
+                spec["id"], spec["label"], source_name, source_url,
+                spec["units"], freq, obs,
+                confidence=spec["confidence"], note=spec.get("note"),
+                splices=splices if spec.get("spliced") else None)
+        except ValueError as exc:
+            errors[spec["id"]] = str(exc)
+            print("contract: %s" % exc, flush=True)
+
+    dates = payload.get("dates", [])
+    for spec in CONTRACT_DAILY:
+        source_name, source_url = _provenance(source, spec)
+        add(spec, _obs(dates, payload.get(spec["column"], [])),
+            source_name, source_url, "daily")
+
+    monthly = payload.get("monthly")
+    if monthly:
+        # Contract dates are ISO days; EIA's monthly periods are YYYY-MM.
+        periods = [p + "-01" for p in monthly.get("periods", [])]
+        for spec in CONTRACT_MONTHLY:
+            add(spec, _obs(periods, monthly.get(spec["column"], [])),
+                spec["source"], spec["source_url"], "monthly")
+
+    return series, errors
+
+
+def write_contract_series(payload):
+    """Publish series.json alongside the page payload."""
+    series, errors = build_contract_series(payload)
+    doc = {
+        "fetched_at": payload["updated"],
+        "note": "Machine-fetched. The econ-core contract view of the same "
+                "numbers the page renders from crack.json; rewritten wholesale "
+                "each refresh and never hand-edited.",
+        "econcore": econcore.VERSION,
+        "source": payload.get("source"),
+        "errors": errors,
+        "series": series,
+    }
+    tmp = SERIES_FILE + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(doc, fh, separators=(",", ":"))
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, SERIES_FILE)
+    total = sum(len(s["obs"]) for s in series.values())
+    print("contract: %d series, %d observations, %d errors"
+          % (len(series), total, len(errors)), flush=True)
+    return doc
 
 
 def _compare(records, kind_prefix, periods_old, arr_old, periods_new, arr_new, key, label):
@@ -341,35 +581,15 @@ def diff_payloads(old, new):
     return records
 
 
-def record_revisions(records, observed_at):
-    """Append to the log and return (recent_records, total_count)."""
-    if records:
-        with open(REVISIONS, "a") as fh:
-            for rec in records:
-                rec = dict(rec, observed_at=observed_at)
-                fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
-        try:
-            os.chmod(REVISIONS, 0o644)
-        except OSError:
-            pass
-    return read_revisions(REVISIONS_IN_PAYLOAD)
+def record_revisions(records):
+    """Append to the shared log and return (recent_records, total_count).
 
-
-def read_revisions(limit):
-    """Return (most recent `limit` records, total). Newest first."""
-    if not os.path.exists(REVISIONS):
-        return [], 0
-    out = []
-    with open(REVISIONS) as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                out.append(json.loads(line))
-            except ValueError:
-                continue
-    return list(reversed(out[-limit:])), len(out)
+    econcore owns the jsonl format so a revision logged by diesel reads the
+    same as one logged by jobs or debt; it stamps each record observed_at.
+    """
+    for rec in records:
+        econcore.log_revision(REVISIONS, rec)
+    return econcore.read_revisions(REVISIONS, REVISIONS_IN_PAYLOAD)
 
 
 def tracking_since(default_iso):
@@ -407,7 +627,7 @@ def refresh():
         for r in revisions:
             kinds[r["kind"]] = kinds.get(r["kind"], 0) + 1
         print("restatements detected: %d (%s)" % (len(revisions), kinds), flush=True)
-    recent, total = record_revisions(revisions, payload["updated"])
+    recent, total = record_revisions(revisions)
     payload["revisions"] = {
         "since": tracking_since(payload["updated"]),
         "total": total,
@@ -424,6 +644,14 @@ def refresh():
         json.dump(payload, fh, separators=(",", ":"))
     os.chmod(tmp, 0o644)
     os.replace(tmp, CACHE)
+    # The contract view is published after the page's own payload is safely on
+    # disk: it is what the overlay site reads, so a fault here should cost the
+    # comparison, not this page's refresh.
+    try:
+        write_contract_series(payload)
+    except Exception as exc:  # noqa: BLE001 - the page does not depend on this
+        print("contract publication failed: %s: %s"
+              % (type(exc).__name__, exc), flush=True)
     print("refreshed: source=%s points=%d latest=%s" % (payload["source"], len(payload["dates"]), payload["dates"][-1]), flush=True)
     return True
 
@@ -480,6 +708,87 @@ def refresher(failures=0):
         failures = 0 if refresh() else failures + 1
 
 
+# Serve-side caches. Requests arrive on their own threads, so every read of
+# these is a snapshot taken under _serve_lock and every caller works from the
+# local copy it took: returning the shared slot instead would let one thread
+# hand back a blob another thread had just replaced.
+_serve_lock = threading.Lock()
+_recessions = {"mtime": None, "doc": None}
+_body_cache = {"key": None, "blob": None}
+_file_cache = {}
+
+
+def _recessions_snapshot():
+    """(doc, mtime) as one consistent pair, reloaded when the file changes.
+
+    Curated and vendored rather than machine-fetched, so it is read at serve
+    time instead of being baked into the payload: a re-vendor then reaches the
+    page on the next request rather than waiting out the next refresh. The two
+    values come back together because the body cache keys on the mtime and
+    embeds the doc; read separately they could disagree.
+    """
+    try:
+        mtime = os.path.getmtime(RECESSIONS)
+    except OSError:
+        mtime = None
+    with _serve_lock:
+        if mtime is not None and _recessions["mtime"] != mtime:
+            try:
+                _recessions["doc"] = econcore.load_recessions(RECESSIONS)
+                _recessions["mtime"] = mtime
+            except (ValueError, OSError) as exc:  # keep the last good copy
+                print("recessions load failed: %s" % exc, flush=True)
+        return _recessions["doc"], _recessions["mtime"]
+
+
+def load_recessions():
+    return _recessions_snapshot()[0]
+
+
+def data_body(payload):
+    """Serialised /api/data body, cached on content.
+
+    The payload is most of a megabyte and changes a few times a week, so
+    re-encoding it for every viewer is pure waste.
+
+    The encode happens outside the lock and the caller returns its own bytes.
+    Two requests that straddle a refresh may both encode, which costs a little
+    work and nothing else; the alternative -- returning whatever is in the
+    shared slot at the end -- lets a request that read the new payload serve
+    the old one, because another thread can overwrite the slot in between.
+    """
+    recessions, rec_mtime = _recessions_snapshot()
+    key = (payload.get("updated"), rec_mtime)
+    with _serve_lock:
+        if _body_cache["key"] == key:
+            return _body_cache["blob"]
+    blob = json.dumps(dict(payload, recessions=recessions),
+                      separators=(",", ":")).encode()
+    with _serve_lock:
+        # key and blob are published together, so no reader sees a pair that
+        # does not belong to each other.
+        _body_cache["key"] = key
+        _body_cache["blob"] = blob
+    return blob
+
+
+def file_body(path):
+    """Raw bytes of a data file, cached on mtime. None when absent."""
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return None
+    entry = _file_cache.get(path)
+    if not entry or entry[0] != mtime:
+        try:
+            with open(path, "rb") as fh:
+                entry = (mtime, fh.read())
+        except OSError:
+            return None
+        _file_cache[path] = entry
+    return entry[1]
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "diesel-api"
@@ -513,6 +822,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, {
                     "status": "ok",
                     "source": payload.get("source"),
+                    "econcore": econcore.VERSION,
+                    "fred_key": bool(FRED_KEY),
                     "points": len(payload["dates"]),
                     "latest": payload["dates"][-1],
                     "monthly_points": len(payload["monthly"]["periods"]) if payload.get("monthly") else 0,
@@ -532,7 +843,7 @@ class Handler(BaseHTTPRequestHandler):
                 limit = max(1, min(5000, int(qs.get("limit", ["500"])[0])))
             except ValueError:
                 limit = 500
-            recent, total = read_revisions(limit)
+            recent, total = econcore.read_revisions(REVISIONS, limit)
             self._send(200, {
                 "since": payload["revisions"]["since"] if payload and payload.get("revisions") else None,
                 "total": total,
@@ -545,7 +856,26 @@ class Handler(BaseHTTPRequestHandler):
             if payload is None:
                 self._send(503, {"error": last_error or "no data yet"})
             else:
-                self._send(200, json.dumps(payload, separators=(",", ":")).encode())
+                self._send(200, data_body(payload))
+            return
+
+        if path == "/api/series":
+            # The econ-core contract view: what the overlay site reads. Served
+            # from disk rather than from the in-memory payload so it is the
+            # published artifact that gets returned, not a re-derivation.
+            blob = file_body(SERIES_FILE)
+            if blob is None:
+                self._send(503, {"error": "contract series not published yet"})
+            else:
+                self._send(200, blob)
+            return
+
+        if path == "/api/recessions":
+            doc = load_recessions()
+            if doc is None:
+                self._send(503, {"error": "recessions.json missing"})
+            else:
+                self._send(200, doc)
             return
 
         self._send(404, {"error": "not found"})
@@ -556,7 +886,10 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     os.makedirs(DATA_DIR, exist_ok=True)
-    print("starting; EIA key %s" % ("present" if EIA_KEY else "ABSENT (FRED fallback only)"), flush=True)
+    print("starting; econcore %s; EIA key %s; FRED key %s"
+          % (econcore.VERSION,
+             "present" if EIA_KEY else "ABSENT (FRED fallback only)",
+             "present" if FRED_KEY else "absent (keyless CSV)"), flush=True)
     load_cache()
     ok = refresh()
     # A failed first fetch enters the backoff schedule immediately rather than

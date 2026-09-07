@@ -1,0 +1,229 @@
+{
+ "generated_at": "2026-09-07T06:45:51.743976+00:00",
+ "builder": "econ-core/tools/build-recessions.py",
+ "convention": "Shade peak month through trough month inclusive.",
+ "us": {
+  "source": "NBER business cycle dates via FRED USREC",
+  "source_url": "https://fred.stlouisfed.org/series/USREC",
+  "derivation": "USREC is 1 from the month after the peak through the trough; peak = first 1 minus one month, trough = last 1.",
+  "as_of": "2026-08-01",
+  "bands": [
+   {
+    "peak": "1854-12",
+    "trough": "1854-12",
+    "truncated_start": true,
+    "note": "USREC starts mid-recession; the true peak predates the series."
+   },
+   {
+    "peak": "1857-06",
+    "trough": "1858-12"
+   },
+   {
+    "peak": "1860-10",
+    "trough": "1861-06"
+   },
+   {
+    "peak": "1865-04",
+    "trough": "1867-12"
+   },
+   {
+    "peak": "1869-06",
+    "trough": "1870-12"
+   },
+   {
+    "peak": "1873-10",
+    "trough": "1879-03"
+   },
+   {
+    "peak": "1882-03",
+    "trough": "1885-05"
+   },
+   {
+    "peak": "1887-03",
+    "trough": "1888-04"
+   },
+   {
+    "peak": "1890-07",
+    "trough": "1891-05"
+   },
+   {
+    "peak": "1893-01",
+    "trough": "1894-06"
+   },
+   {
+    "peak": "1895-12",
+    "trough": "1897-06"
+   },
+   {
+    "peak": "1899-06",
+    "trough": "1900-12"
+   },
+   {
+    "peak": "1902-09",
+    "trough": "1904-08"
+   },
+   {
+    "peak": "1907-05",
+    "trough": "1908-06"
+   },
+   {
+    "peak": "1910-01",
+    "trough": "1912-01"
+   },
+   {
+    "peak": "1913-01",
+    "trough": "1914-12"
+   },
+   {
+    "peak": "1918-08",
+    "trough": "1919-03"
+   },
+   {
+    "peak": "1920-01",
+    "trough": "1921-07"
+   },
+   {
+    "peak": "1923-05",
+    "trough": "1924-07"
+   },
+   {
+    "peak": "1926-10",
+    "trough": "1927-11"
+   },
+   {
+    "peak": "1929-08",
+    "trough": "1933-03"
+   },
+   {
+    "peak": "1937-05",
+    "trough": "1938-06"
+   },
+   {
+    "peak": "1945-02",
+    "trough": "1945-10"
+   },
+   {
+    "peak": "1948-11",
+    "trough": "1949-10"
+   },
+   {
+    "peak": "1953-07",
+    "trough": "1954-05"
+   },
+   {
+    "peak": "1957-08",
+    "trough": "1958-04"
+   },
+   {
+    "peak": "1960-04",
+    "trough": "1961-02"
+   },
+   {
+    "peak": "1969-12",
+    "trough": "1970-11"
+   },
+   {
+    "peak": "1973-11",
+    "trough": "1975-03"
+   },
+   {
+    "peak": "1980-01",
+    "trough": "1980-07"
+   },
+   {
+    "peak": "1981-07",
+    "trough": "1982-11"
+   },
+   {
+    "peak": "1990-07",
+    "trough": "1991-03"
+   },
+   {
+    "peak": "2001-03",
+    "trough": "2001-11"
+   },
+   {
+    "peak": "2007-12",
+    "trough": "2009-06"
+   },
+   {
+    "peak": "2020-02",
+    "trough": "2020-04"
+   }
+  ]
+ },
+ "ca": {
+  "source": "C.D. Howe Institute Business Cycle Council, Commentary 366 (Cross & Bergevin 2012), Table 1; COVID-19 dates from the Council's 2021 declaration",
+  "source_url": "https://www.cdhowe.org/wp-content/uploads/2024/12/Commentary_366_0-2.pdf",
+  "note": "No API exists; hardcoded, category is the Council's severity scale (1 mildest to 5 most severe).",
+  "bands": [
+   {
+    "peak": "1929-04",
+    "trough": "1933-02",
+    "category": 5
+   },
+   {
+    "peak": "1937-11",
+    "trough": "1938-06",
+    "category": 5
+   },
+   {
+    "peak": "1947-08",
+    "trough": "1948-03",
+    "category": 2
+   },
+   {
+    "peak": "1951-04",
+    "trough": "1951-12",
+    "category": 3
+   },
+   {
+    "peak": "1953-07",
+    "trough": "1954-07",
+    "category": 4
+   },
+   {
+    "peak": "1957-03",
+    "trough": "1958-01",
+    "category": 3
+   },
+   {
+    "peak": "1960-03",
+    "trough": "1961-03",
+    "category": 3
+   },
+   {
+    "peak": "1974-12",
+    "trough": "1975-03",
+    "category": 2
+   },
+   {
+    "peak": "1980-01",
+    "trough": "1980-06",
+    "category": 1
+   },
+   {
+    "peak": "1981-06",
+    "trough": "1982-10",
+    "category": 4
+   },
+   {
+    "peak": "1990-03",
+    "trough": "1992-04",
+    "category": 4
+   },
+   {
+    "peak": "2008-10",
+    "trough": "2009-05",
+    "category": 4
+   },
+   {
+    "peak": "2020-02",
+    "trough": "2020-04",
+    "category": null,
+    "source_url": "https://cdhowe.org/council-reports/cd-howe-institute-business-cycle-council-declares-end-Covid-19-recession"
+   }
+  ]
+ },
+ "vendored": "econ-core 273cdef, vendored 2026-09-07"
+}

@@ -39,6 +39,9 @@ services:
     environment:
       - DATA_DIR=/app/data
       - EIA_API_KEY=${EIA_API_KEY:-}
+      # Optional. The FRED fallback works keyless; a key only routes it through
+      # the JSON API instead of the CSV endpoint.
+      - FRED_API_KEY=${FRED_API_KEY:-}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/api/health || exit 1"]
       interval: 60s

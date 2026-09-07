@@ -1,6 +1,15 @@
 .env
 compose.override.yaml
 *.log
-data/
 __pycache__/
 *.pyc
+
+# NOTE: data/ is deliberately NOT ignored. recessions.json is the vendored
+# shared dataset the charts shade from, and the jsonl logs are append-only
+# records of what upstream actually did. Machine-owned artefacts that are
+# rewritten wholesale every run are listed individually instead.
+data/*.tmp
+# The page payload: ~700KB of spot prices, replaced entirely on each refresh.
+data/crack.json
+# The econ-core contract view of the same numbers, likewise regenerable.
+data/series.json

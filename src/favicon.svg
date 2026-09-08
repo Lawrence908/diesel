@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>diesel</title>
+  <rect width="64" height="64" rx="13" fill="#12120f"/>
+  <g fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M32 13c13 17 15 23 15 27a15 15 0 0 1-30 0c0-4 2-10 15-27z"
+        fill="#1baf7a" stroke="none"/>
+  </g>
+</svg>

@@ -38,11 +38,11 @@ collection.
 ## Two shapes, one refresh
 
 `crack.json` is what the page reads: columnar, every series aligned on one date axis, cheap to
-render. `series.json` is the same numbers in the [econ-core](../econ-core) contract shape, served
+render. `series.json` is the same numbers in the [econ-core](https://github.com/Lawrence908/econ-core) contract shape, served
 at `/api/series` and never read by the page.
 
 The contract view exists so the overlay site can put a $/bbl crack on common axes with an
-unemployment rate from [jobs](../jobs) or a debt ratio from [debt](../debt) without any of those
+unemployment rate from [jobs](https://github.com/Lawrence908/jobs) or a debt ratio from [debt](https://github.com/Lawrence908/debt) without any of those
 pages being rewritten first. Twelve series are published: four cracks, five spot legs, three
 monthly refiner series. It lives in its own file rather than in the page payload because contract
 `obs` are `[date, value]` pairs, and ten thousand daily points across nine series is a couple of

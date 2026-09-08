@@ -295,6 +295,7 @@ def build_payload():
     payload["monthly"] = fetch_monthly()
     last_release, next_release = fetch_release_dates()
     payload["release"] = {"last": last_release, "next": next_release}
+    payload["analysis"] = {"status": build_status(payload), "rule": CRACK_RULE}
     return payload
 
 
@@ -452,6 +453,87 @@ def _provenance(source, spec):
 def _obs(dates, values):
     """[[date, value], ...] with gaps dropped rather than filled."""
     return [[d, v] for d, v in zip(dates, values) if v is not None]
+
+
+# --------------------------------------------------------------------------
+# analysis: the status block econ-core's hub reads
+# --------------------------------------------------------------------------
+
+# No alarm rule for refining margins exists in the literature the way Sahm's
+# 0.50 or the 20% housing rollover do, so this page does not borrow one. It
+# scores the current margin against its own history instead, using the
+# percentile rank econ-core reserves as the collection's alternate
+# normalization. Wide is the interesting direction: a distillate squeeze
+# shows up here before it shows up at the pump.
+CRACK_RULE = {
+    "id": "us_crack_spread",
+    "percentile": 90,
+    "window": 20,
+    "statement": "Margins read as historically wide when the 4-week average US crack sits at or above the 90th percentile of every daily observation on record.",
+}
+
+
+def build_status(payload):
+    """Where today's refining margin sits against every day since 1986.
+
+    Scored on the 4-week average, not the latest print: a single daily
+    observation on a thin barge market moves several dollars for reasons
+    that have nothing to do with the cycle.
+    """
+    dates, us = payload.get("dates", []), payload.get("us", [])
+    valid = [(d, v) for d, v in zip(dates, us) if v is not None]
+    if len(valid) < CRACK_RULE["window"]:
+        return {}
+
+    window = [v for _, v in valid[-CRACK_RULE["window"]:]]
+    recent = sum(window) / len(window)
+    history = sorted(v for _, v in valid)
+    # Fraction of the record at or below the current 4-week average.
+    below = sum(1 for v in history if v <= recent)
+    rank = round(below / len(history) * 100.0, 1)
+    wide = rank >= CRACK_RULE["percentile"]
+    as_of = valid[-1][0]
+
+    status = {
+        "us_crack_spread": {
+            "latest": [as_of, valid[-1][1]],
+            "mean_4w": round(recent, 2),
+            "percentile": rank,
+            "history_span": [valid[0][0], as_of],
+            "history_obs": len(history),
+        },
+        "signal_active": wide,
+    }
+
+    eu = [v for v in payload.get("eu", []) if v is not None]
+    if eu:
+        status["eu_crack_spread"] = {"latest_4w": round(
+            sum(eu[-CRACK_RULE["window"]:]) / len(eu[-CRACK_RULE["window"]:]), 2)}
+
+    # Round the rank down, never up: "100th percentile" asserts nothing in the
+    # record sits higher, which at 99.6 is false by forty-odd trading days.
+    if recent >= history[-1]:
+        placing = "the widest 4-week average on record"
+    else:
+        placing = "%s percentile since %s" % (_ordinal(rank), valid[0][0][:4])
+    detail = "US crack $%.2f on a 4-week average, %s" % (recent, placing)
+    status["headline"] = {
+        "state": "signal" if wide else "normal",
+        "label": "Margins historically wide" if wide else "Margins in normal range",
+        "detail": detail,
+        "as_of": as_of,
+        "rule": CRACK_RULE["statement"],
+    }
+    return status
+
+
+def _ordinal(pct):
+    n = int(pct)
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return "%d%s" % (n, suffix)
 
 
 def build_contract_series(payload):
@@ -664,6 +746,10 @@ def load_cache():
             payload = json.load(fh)
     except Exception:  # noqa: BLE001 - a corrupt cache is not fatal
         return
+    # A cache written before the status block existed still has to render one,
+    # otherwise the chip stays hidden until the next scheduled refresh.
+    if "analysis" not in payload:
+        payload["analysis"] = {"status": build_status(payload), "rule": CRACK_RULE}
     with _lock:
         _state["payload"] = payload
         _state["fetched_at"] = os.path.getmtime(CACHE)
@@ -827,6 +913,8 @@ class Handler(BaseHTTPRequestHandler):
                     "points": len(payload["dates"]),
                     "latest": payload["dates"][-1],
                     "monthly_points": len(payload["monthly"]["periods"]) if payload.get("monthly") else 0,
+                    "signal_active": ((payload.get("analysis") or {}).get("status") or {}).get("signal_active"),
+                    "headline": ((payload.get("analysis") or {}).get("status") or {}).get("headline"),
                     "fetched_at": fetched_at,
                     "revisions_total": payload.get("revisions", {}).get("total", 0),
                     "revisions_last_run": payload.get("revisions", {}).get("last_run", 0),

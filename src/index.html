@@ -79,12 +79,20 @@ body {
 
 header h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.02em; }
 header p.sub { margin: 0; color: var(--text-secondary); max-width: 62ch; }
-.lagchip {
-  display: inline-flex; align-items: baseline; gap: 8px; margin-top: 16px;
+/* Two different questions, so two pills rather than one crowded one: what the
+   margin says, and how far behind today the data is. They wrap independently
+   on a narrow screen. */
+.chiprow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.chiprow:empty { display: none; }
+.chip, .lagchip {
+  display: inline-flex; align-items: baseline; gap: 8px;
   padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px;
   background: var(--surface-1); font-size: 0.8rem; color: var(--text-secondary);
 }
-.lagchip[hidden] { display: none; }
+.chip[hidden], .lagchip[hidden] { display: none; }
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--series-3); flex: none; align-self: center; }
+.chip[data-state="signal"] .dot { background: var(--series-2); }
+.chip b { color: var(--text-primary); font-weight: 650; }
 .lagchip .dot {
   width: 7px; height: 7px; border-radius: 50%; background: var(--series-1);
   flex: none; align-self: center;
@@ -170,7 +178,10 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
   <header>
     <h1>Diesel Crack Spread</h1>
     <p class="sub">The refiner's margin on the diesel leg: what a barrel's worth of NY Harbor distillate fetches over the crude it was made from. US version priced against WTI, European / Atlantic-basin version against Brent.</p>
-    <p class="lagchip" id="lagchip" hidden></p>
+    <div class="chiprow">
+      <span class="chip" id="chip" hidden></span>
+      <span class="lagchip" id="lagchip" hidden></span>
+    </div>
     <p class="fresh" id="fresh"></p>
     <p class="stamp" id="stamp">Loading data…</p>
   </header>
@@ -632,6 +643,17 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
 
   function lastValid(arr) { for (var i = arr.length - 1; i >= 0; i--) if (arr[i] !== null) return { v: arr[i], i: i }; return null; }
 
+  function buildChip(p) {
+    var head = ((p.analysis || {}).status || {}).headline;
+    var chip = document.getElementById("chip");
+    if (!head) return;
+    chip.innerHTML = '<span class="dot"></span><span><b>' + head.label + "</b> · " +
+                     head.detail + "</span>";
+    chip.setAttribute("data-state", head.state);
+    chip.title = head.rule;
+    chip.hidden = false;
+  }
+
   function buildTiles(d) {
     var lu = lastValid(d.us), le = lastValid(d.eu);
     var yearAgo = Math.max(0, d.ms.length - 253);
@@ -846,6 +868,7 @@ th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: 
       document.getElementById("stamp").textContent =
         p.dates.length.toLocaleString() + " daily observations, " + p.dates[0] + " to " + newest +
         " · source " + (p.source === "eia" ? "EIA API v2" : "FRED");
+      buildChip(p);
       buildTiles(d);
       buildTable(d);
       buildRevisions(p.revisions);

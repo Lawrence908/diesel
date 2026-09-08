@@ -115,3 +115,20 @@ run in three years. Re-vendor deliberately, per app.
 
 Needs `EIA_API_KEY` in `.env`. `FRED_API_KEY` is optional and only routes the fallback through
 FRED's JSON API instead of the keyless CSV endpoint.
+
+## Data and attribution
+
+The MIT licence covers this repository's code. It does not cover the data, which is not
+mine: every series belongs to the body that publishes it and carries that body's own terms.
+Each series names its `source` and `source_url` so the original is always one click away.
+
+Prices come from the [US Energy Information Administration](https://www.eia.gov/),
+whose data is a work of the US government and not subject to copyright. The EIA asks
+that it be cited as the source.
+
+Recession bands come from econ-core: the US from the NBER chronology via FRED `USREC`,
+Canada from the C.D. Howe Institute Business Cycle Council chronology.
+
+Series reached through FRED are redistributed by the Federal Reserve Bank of St. Louis
+under [its terms of use](https://fred.stlouisfed.org/legal/), which ask that you cite the
+original source and note that it was accessed via FRED.

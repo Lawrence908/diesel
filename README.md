@@ -100,7 +100,7 @@ counts and diffing across a switch would report hundreds of phantom restatements
 ## Re-vendoring econ-core
 
 ```bash
-cd ../econ-core && ./vendor.sh /mnt/storage/apps/diesel
+cd ../econ-core && ./vendor.sh ../diesel
 ```
 
 Rewrites `api/econcore.py` and `data/recessions.json` with a stamp naming the commit they came
